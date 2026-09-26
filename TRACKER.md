@@ -226,3 +226,10 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   `Path.write_text()`'s default newline translation silently turned every `\n` into `\r\n` on
   Windows, while `read_file()` reads raw bytes with no translation — fixed with `newline=""`.
   10 new tests, 112 passing overall.
+- 2026-09-26 — Second Phase 5 component landed on `feat/sandboxed-pytest-runner`:
+  `SandboxedPytestRunner` (`multiagent/tools/pytest_runner.py`) — always
+  `sys.executable -m pytest` as an argv list (never a shell string), every target validated
+  against the sandbox *before* any subprocess launches, and a hard timeout that returns a
+  structured `TestRunResult(timed_out=True)` instead of raising or hanging. 6 new tests
+  (two run pytest as a real subprocess against a tmp project; the rest mock `subprocess.run`
+  for the timeout/validation/argv-shape cases). 118 passing overall.
