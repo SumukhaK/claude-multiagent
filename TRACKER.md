@@ -260,3 +260,10 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   `create_branch`/`commit` for real against a throwaway local repo; `push`/`create_pull_request`
   are always mocked, since they'd otherwise touch a real network/remote and the user's own
   authenticated `gh` account. 11 new tests, 156 passing overall.
+- 2026-09-26 — Second Phase 6 component landed on `feat/resilience-retry-circuit-breaker`:
+  `retry_with_fallback` and `CircuitBreaker` (`multiagent/resilience.py`) — generic, agent-agnostic
+  bounded retry (an exception counts as a retry-worthy attempt, not a crash) and a hard backstop
+  that opens after repeated consecutive failures across *separate* calls, on top of each call's
+  own retry budget. No dependency on git/LLM/any specific agent, so Phase 7's orchestrator and
+  the Tool agent (next) both reuse this instead of hand-rolling retry logic per call site.
+  10 new tests, 166 passing overall.
