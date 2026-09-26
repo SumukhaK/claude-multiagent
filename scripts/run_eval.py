@@ -47,6 +47,13 @@ def main() -> None:
         default=None,
         help="wrap Planner/Coder prompts in the model's chat template (default: LLAMA_USE_CHAT_TEMPLATE)",
     )
+    parser.add_argument(
+        "--agent-model",
+        help="run Planner, Coder and Tool agent on this Ollama model (e.g. qwen2.5:7b-instruct) "
+        "instead of llama-server; Ollama splits it between GPU and CPU",
+    )
+    parser.add_argument("--agent-context", type=int, default=8192, help="context size for --agent-model")
+    parser.add_argument("--agent-timeout", type=float, default=900.0, help="seconds per call for --agent-model")
     parser.add_argument("--update-readme", action="store_true", help="publish the report into README.md")
     args = parser.parse_args()
 
@@ -72,18 +79,30 @@ def main() -> None:
             flush=True,
         )
 
-    server = LlamaServerProcess(settings)
-    server.start()
+    server = None
     try:
-        server.wait_until_healthy(timeout=120.0)
-        use_template = settings.llama_use_chat_template if args.chat_template is None else args.chat_template
-        llama = LlamaServerClient(base_url=server.base_url, use_chat_template=use_template)
-        ollama = OllamaClient(
-            host=settings.ollama_host,
-            model=settings.ollama_tool_model,
-            use_gpu=settings.ollama_tool_use_gpu,
-            context_size=settings.ollama_tool_context_size,
-        )
+        if args.agent_model:
+            # One shared client for all three agents: different options per agent would make Ollama
+            # reload the whole model every time the agents alternate.
+            llama = ollama = OllamaClient(
+                host=settings.ollama_host,
+                model=args.agent_model,
+                use_gpu=True,
+                context_size=args.agent_context,
+                timeout=args.agent_timeout,
+            )
+        else:
+            server = LlamaServerProcess(settings)
+            server.start()
+            server.wait_until_healthy(timeout=120.0)
+            use_template = settings.llama_use_chat_template if args.chat_template is None else args.chat_template
+            llama = LlamaServerClient(base_url=server.base_url, use_chat_template=use_template)
+            ollama = OllamaClient(
+                host=settings.ollama_host,
+                model=settings.ollama_tool_model,
+                use_gpu=settings.ollama_tool_use_gpu,
+                context_size=settings.ollama_tool_context_size,
+            )
         make_system = partial(
             _build,
             llama=llama,
@@ -100,14 +119,15 @@ def main() -> None:
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as workdir:
             results = run_suite(tasks, args.repeats, make_system, Path(workdir), on_result, artifacts_dir)
     finally:
-        server.stop()
+        if server is not None:
+            server.stop()
 
     report = aggregate(results)
     markdown = render_markdown(
         report,
         metadata={
             "date": datetime.now(UTC).strftime("%Y-%m-%d"),
-            "model": Path(settings.llama_model_path).name,
+            "model": args.agent_model or Path(settings.llama_model_path).name,
             "repeats": args.repeats,
         },
     )
