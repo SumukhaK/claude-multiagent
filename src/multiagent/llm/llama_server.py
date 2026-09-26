@@ -8,6 +8,7 @@ versions). See REQUIREMENTS.md for the reasoning behind each setting.
 import subprocess
 import time
 from pathlib import Path
+from typing import TextIO
 
 import httpx
 
@@ -39,6 +40,7 @@ class LlamaServerProcess:
     def __init__(self, settings: Settings):
         self._settings = settings
         self._process: subprocess.Popen | None = None
+        self._log_file: TextIO | None = None
 
     @property
     def base_url(self) -> str:
@@ -51,10 +53,15 @@ class LlamaServerProcess:
         """Launch llama-server if it isn't already running under this wrapper."""
         if self.is_running():
             return
+        # Output goes to a file, never an unread pipe: a full pipe buffer blocks the server's next
+        # log write and freezes every request while /health keeps answering.
+        log_path = Path(self._settings.llama_log_path)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        self._log_file = log_path.open("a", encoding="utf-8")
         self._process = subprocess.Popen(
             build_llama_server_command(self._settings),
             cwd=self._settings.llama_cpp_dir,
-            stdout=subprocess.PIPE,
+            stdout=self._log_file,
             stderr=subprocess.STDOUT,
             text=True,
         )
@@ -84,3 +91,6 @@ class LlamaServerProcess:
             self._process.kill()
             self._process.wait(timeout=timeout)
         self._process = None
+        if self._log_file is not None:
+            self._log_file.close()
+            self._log_file = None
