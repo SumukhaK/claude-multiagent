@@ -52,3 +52,54 @@ def test_prompt_mandates_tdd_and_json_output():
 
     assert "mandatory" in prompt.lower()
     assert "test_files" in prompt
+
+
+def test_prompt_has_no_dots_placeholder_shape_because_the_model_copies_it_literally():
+    """Measured: shown `"content": "..."` the model returned "..." as the file body (constrained
+    decoding lets any string through), so the format is described in words instead."""
+    prompt = render_coder_prompt(step=PlanStep(step_id=1, description="add add()"), constrained=True)
+
+    assert '"..."' not in prompt
+    assert "..." not in prompt
+
+
+def test_prompt_tells_the_model_to_use_relative_file_paths_never_placeholders():
+    prompt = " ".join(render_coder_prompt(step=PlanStep(step_id=1, description="x"), constrained=True).lower().split())
+
+    assert "relative" in prompt
+    assert "never absolute" in prompt
+    assert "never a directory" in prompt
+    assert "never placeholders" in prompt
+
+
+def test_prompt_separates_test_files_from_implementation_files_and_demands_a_test_function():
+    prompt = " ".join(render_coder_prompt(step=PlanStep(step_id=1, description="x"), constrained=True).split())
+
+    assert "test_files holds the pytest test file" in prompt
+    assert "implementation_files holds the code being tested" in prompt
+    assert "at least one function named test_" in prompt
+    assert "assert" in prompt
+
+
+def test_prompt_contains_no_worked_example_the_model_could_copy():
+    """A worked example was tried and copied verbatim in 17 of 24 samples."""
+    prompt = render_coder_prompt(step=PlanStep(step_id=1, description="add add()"), constrained=True)
+
+    assert "shout" not in prompt
+    assert '"kind": "code_change"' not in prompt
+
+
+def test_the_unconstrained_prompt_keeps_the_explicit_json_shape():
+    """Without a grammar the model has nothing else to tell it the shape: measured, the words-only
+    prompt made an unconstrained model invent its own JSON structure (10 of 16 failures in one run)."""
+    prompt = render_coder_prompt(step=PlanStep(step_id=1, description="x"))
+
+    assert '"test_files": [{"path"' in prompt
+
+
+def test_the_constrained_prompt_describes_the_format_in_words_only():
+    prompt = render_coder_prompt(step=PlanStep(step_id=1, description="x"), constrained=True)
+
+    assert '"test_files": [{"path"' not in prompt
+    assert "..." not in prompt
+    assert "test_files holds the pytest test file" in prompt
