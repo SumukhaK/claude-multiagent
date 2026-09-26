@@ -145,7 +145,7 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 | 5 | Coding agent: TDD-enforcing workflow, sandboxed file write/edit tool, sandboxed pytest execution tool, mandatory step-review gate | ✅ |
 | 6 | Tool agent: git/gh wrapper tools (branch/commit/push/PR), allowlisted commands only, hardware/emulator test runner (best-effort/stretch), retry + timeout + circuit-breaker logic | ✅ |
 | 7 | Orchestrator: LangGraph state machine wiring all three agents, human-in-the-loop clarification interrupt, retry/escalation policy, hard step-budget circuit breaker, end-to-end test | ✅ |
-| 8 | Memory layer: local mem0 (local embeddings via `nomic-embed-text`, local vector store), wired into Planner + Coder | 🔶 |
+| 8 | Memory layer: local mem0 (local embeddings via `nomic-embed-text`, local vector store), wired into Planner + Coder | ✅ |
 | 9 | Guardrails & security hardening pass: expand injection/secret-exfiltration filters, sandbox/tool-allowlist audit | ⬜ |
 | 10 | Evaluation harness: golden task set, metrics (latency, token usage, tool success rate, hallucination rate + recovery, cost proxy), results appended to `README.md` | ⬜ |
 | 11 | Polish: finalize architecture diagram, changelog, demo | ⬜ |
@@ -319,3 +319,13 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   `mem0ai` (pulls qdrant-client, openai, posthog) and `ollama` (mem0's Ollama embedder requires
   the official client). 14 new tests, 227 passing overall. Orchestrator wiring is the next
   component.
+- 2026-09-26 — Second and final Phase 8 component landed on `feat/orchestrator-memory`: the
+  orchestrator takes an optional memory and appends recalled context (size-capped, guardrail-wrapped)
+  for the Planner, Coder and reviewer; it remembers only verified outcomes — approved steps,
+  clarification answers, completed tasks — never plans or failed attempts. The remembering side
+  effect in `clarification_node` sits *after* `interrupt()`, so it runs exactly once (LangGraph
+  re-executes a node from its start on resume). Extracted the shared orchestrator test fakes into
+  `tests/orchestrator/fakes.py` first (the test file was heading past the ~400-line guideline),
+  re-verifying the 11 existing tests unchanged. Verified with a real `MemoryStore` across two
+  consecutive tasks: task 2, worded differently, received task 1's step summary and completion
+  record. 11 new tests, 238 passing overall. **Phase 8 complete.**

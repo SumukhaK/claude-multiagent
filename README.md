@@ -124,6 +124,11 @@ note per phase as it lands.
   Coder, fake Tool agent) caught a real gap in the retry policy and a real case of the model
   gaming the TDD schema check — both fixed/recorded honestly rather than hidden, see
   REQUIREMENTS.md §8. All three sub-agents are now wired into one working system.
+- **Phase 8 — Memory layer**: local mem0 (Ollama `nomic-embed-text` embeddings + on-disk vector
+  store, no LLM, telemetry off) behind a project-scoped `MemoryStore`, wired into the
+  orchestrator: agents get relevant recalled context, and only *verified* outcomes (approved
+  steps, clarification answers, completed tasks) are remembered. Recall ~0.02s, +4 MiB GPU. See
+  [REQUIREMENTS.md §9](REQUIREMENTS.md#9-memory-layer-phase-8).
 
 ## Running locally
 

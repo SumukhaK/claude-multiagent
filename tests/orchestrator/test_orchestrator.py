@@ -8,128 +8,31 @@ about the orchestrator's routing and state logic: does it advance, retry, escala
 a human at the right times.
 """
 
-from multiagent.contracts.messages import (
-    AgentMessage,
-    AgentName,
-    CodeChangeReport,
-    MessageStatus,
-    Plan,
-    PlanStep,
-    StepReview,
-    ToolExecutionReport,
+from multiagent.contracts.messages import PlanStep
+from multiagent.orchestrator.orchestrator import Orchestrator  # noqa: F401
+from tests.orchestrator.fakes import (
+    FakeCoderAgent,
+    FakePlannerAgent,
+    FakeToolAgent,
+    coder_error,
+    coder_ok,
+    make_orchestrator,
+    plan_error,
+    plan_needs_clarification,
+    plan_ok,
+    review,
+    tool_error,
+    tool_ok,
 )
-from multiagent.orchestrator.orchestrator import Orchestrator
-
-
-def _plan_ok(steps):
-    return AgentMessage(
-        agent=AgentName.PLANNER, task_id="t", status=MessageStatus.OK,
-        payload=Plan(goal="goal", steps=steps, clarifying_questions=[]),
-    )
-
-
-def _plan_needs_clarification(questions):
-    return AgentMessage(
-        agent=AgentName.PLANNER, task_id="t", status=MessageStatus.NEEDS_CLARIFICATION,
-        payload=Plan(goal="goal", steps=[], clarifying_questions=questions),
-    )
-
-
-def _plan_error(message):
-    return AgentMessage(agent=AgentName.PLANNER, task_id="t", status=MessageStatus.ERROR, error=message)
-
-
-def _coder_ok(step_id, tests_passed, files=None, summary="did the thing"):
-    return AgentMessage(
-        agent=AgentName.CODER, task_id="t", status=MessageStatus.OK,
-        payload=CodeChangeReport(
-            step_id=step_id, files_changed=files or ["a.py"], tests_added=["test_a.py"],
-            tests_passed=tests_passed, summary=summary,
-        ),
-    )
-
-
-def _coder_error(message):
-    return AgentMessage(agent=AgentName.CODER, task_id="t", status=MessageStatus.ERROR, error=message)
-
-
-def _review(step_id, approved, feedback="ok"):
-    return AgentMessage(
-        agent=AgentName.PLANNER, task_id="t", status=MessageStatus.OK,
-        payload=StepReview(step_id=step_id, approved=approved, feedback=feedback),
-    )
-
-
-def _tool_ok(action, details=""):
-    return AgentMessage(
-        agent=AgentName.TOOL, task_id="t", status=MessageStatus.OK,
-        payload=ToolExecutionReport(action=action, success=True, details=details),
-    )
-
-
-def _tool_error(message):
-    return AgentMessage(agent=AgentName.TOOL, task_id="t", status=MessageStatus.ERROR, error=message)
-
-
-class FakePlannerAgent:
-    def __init__(self, plan_responses, review_responses=None):
-        self._plan_responses = list(plan_responses)
-        self._review_responses = list(review_responses or [])
-        self.plan_calls = []
-        self.review_calls = []
-
-    def create_plan(self, goal, code_context=""):
-        self.plan_calls.append(goal)
-        return self._plan_responses.pop(0) if len(self._plan_responses) > 1 else self._plan_responses[0]
-
-    def review_step(self, step, report, code_context=""):
-        self.review_calls.append(step.step_id)
-        return self._review_responses.pop(0) if len(self._review_responses) > 1 else self._review_responses[0]
-
-
-class FakeCoderAgent:
-    def __init__(self, responses):
-        self._responses = list(responses)
-        self.calls = []
-
-    def implement_step(self, step, code_context=""):
-        self.calls.append(step.step_id)
-        return self._responses.pop(0) if len(self._responses) > 1 else self._responses[0]
-
-
-class FakeToolAgent:
-    def __init__(self, commit_response, pr_response=None):
-        self.commit_response = commit_response
-        self.pr_response = pr_response
-        self.commit_calls = []
-        self.pr_calls = []
-
-    def commit_and_push(self, branch, summary, paths):
-        self.commit_calls.append((branch, summary, tuple(paths)))
-        return self.commit_response
-
-    def open_pull_request(self, title, body, base="main"):
-        self.pr_calls.append((title, body, base))
-        return self.pr_response
-
-
-def make_orchestrator(planner, coder, tool, max_retries_per_step=2, max_orchestrator_steps=25):
-    return Orchestrator(
-        planner_agent=planner,
-        coder_agent=coder,
-        tool_agent=tool,
-        max_retries_per_step=max_retries_per_step,
-        max_orchestrator_steps=max_orchestrator_steps,
-    )
 
 
 def test_happy_path_single_step_reaches_done():
     step = PlanStep(step_id=1, description="add add()")
     planner = FakePlannerAgent(
-        plan_responses=[_plan_ok([step])], review_responses=[_review(1, approved=True)]
+        plan_responses=[plan_ok([step])], review_responses=[review(1, approved=True)]
     )
-    coder = FakeCoderAgent([_coder_ok(1, tests_passed=True)])
-    tool = FakeToolAgent(commit_response=_tool_ok("commit_and_push"), pr_response=_tool_ok("create_pull_request"))
+    coder = FakeCoderAgent([coder_ok(1, tests_passed=True)])
+    tool = FakeToolAgent(commit_response=tool_ok("commit_and_push"), pr_response=tool_ok("create_pull_request"))
     orchestrator = make_orchestrator(planner, coder, tool)
 
     result = orchestrator.run(task_id="t1", goal="add add()", branch_name="feat/x")
@@ -142,11 +45,11 @@ def test_happy_path_single_step_reaches_done():
 def test_clarification_interrupt_then_resume_produces_a_plan():
     step = PlanStep(step_id=1, description="add add()")
     planner = FakePlannerAgent(
-        plan_responses=[_plan_needs_clarification(["which framework?"]), _plan_ok([step])],
-        review_responses=[_review(1, approved=True)],
+        plan_responses=[plan_needs_clarification(["which framework?"]), plan_ok([step])],
+        review_responses=[review(1, approved=True)],
     )
-    coder = FakeCoderAgent([_coder_ok(1, tests_passed=True)])
-    tool = FakeToolAgent(commit_response=_tool_ok("commit_and_push"), pr_response=_tool_ok("create_pull_request"))
+    coder = FakeCoderAgent([coder_ok(1, tests_passed=True)])
+    tool = FakeToolAgent(commit_response=tool_ok("commit_and_push"), pr_response=tool_ok("create_pull_request"))
     orchestrator = make_orchestrator(planner, coder, tool)
 
     first = orchestrator.run(task_id="t2", goal="add a thing", branch_name="feat/x")
@@ -162,9 +65,9 @@ def test_clarification_interrupt_then_resume_produces_a_plan():
 def test_a_planner_error_that_never_recovers_is_retried_then_escalates_without_calling_the_coder():
     """Planning failures get the same bounded-retry treatment as coder/tool failures - a single
     LLM hiccup on the very first call must not kill the whole task with zero retries."""
-    planner = FakePlannerAgent(plan_responses=[_plan_error("model unavailable")])
-    coder = FakeCoderAgent([_coder_ok(1, tests_passed=True)])
-    tool = FakeToolAgent(commit_response=_tool_ok("commit_and_push"))
+    planner = FakePlannerAgent(plan_responses=[plan_error("model unavailable")])
+    coder = FakeCoderAgent([coder_ok(1, tests_passed=True)])
+    tool = FakeToolAgent(commit_response=tool_ok("commit_and_push"))
     orchestrator = make_orchestrator(planner, coder, tool, max_retries_per_step=2)
 
     result = orchestrator.run(task_id="t3", goal="add add()", branch_name="feat/x")
@@ -177,11 +80,11 @@ def test_a_planner_error_that_never_recovers_is_retried_then_escalates_without_c
 def test_a_planner_error_is_retried_and_then_succeeds():
     step = PlanStep(step_id=1, description="add add()")
     planner = FakePlannerAgent(
-        plan_responses=[_plan_error("no complete JSON object found"), _plan_ok([step])],
-        review_responses=[_review(1, approved=True)],
+        plan_responses=[plan_error("no complete JSON object found"), plan_ok([step])],
+        review_responses=[review(1, approved=True)],
     )
-    coder = FakeCoderAgent([_coder_ok(1, tests_passed=True)])
-    tool = FakeToolAgent(commit_response=_tool_ok("commit_and_push"), pr_response=_tool_ok("create_pull_request"))
+    coder = FakeCoderAgent([coder_ok(1, tests_passed=True)])
+    tool = FakeToolAgent(commit_response=tool_ok("commit_and_push"), pr_response=tool_ok("create_pull_request"))
     orchestrator = make_orchestrator(planner, coder, tool, max_retries_per_step=2)
 
     result = orchestrator.run(task_id="t3b", goal="add add()", branch_name="feat/x")
@@ -192,9 +95,9 @@ def test_a_planner_error_is_retried_and_then_succeeds():
 
 def test_a_failing_coder_call_is_retried_and_then_succeeds():
     step = PlanStep(step_id=1, description="add add()")
-    planner = FakePlannerAgent(plan_responses=[_plan_ok([step])], review_responses=[_review(1, approved=True)])
-    coder = FakeCoderAgent([_coder_error("parse failure"), _coder_ok(1, tests_passed=True)])
-    tool = FakeToolAgent(commit_response=_tool_ok("commit_and_push"), pr_response=_tool_ok("create_pull_request"))
+    planner = FakePlannerAgent(plan_responses=[plan_ok([step])], review_responses=[review(1, approved=True)])
+    coder = FakeCoderAgent([coder_error("parse failure"), coder_ok(1, tests_passed=True)])
+    tool = FakeToolAgent(commit_response=tool_ok("commit_and_push"), pr_response=tool_ok("create_pull_request"))
     orchestrator = make_orchestrator(planner, coder, tool, max_retries_per_step=2)
 
     result = orchestrator.run(task_id="t4", goal="add add()", branch_name="feat/x")
@@ -205,9 +108,9 @@ def test_a_failing_coder_call_is_retried_and_then_succeeds():
 
 def test_a_coder_call_that_keeps_failing_escalates_after_the_retry_budget():
     step = PlanStep(step_id=1, description="add add()")
-    planner = FakePlannerAgent(plan_responses=[_plan_ok([step])])
-    coder = FakeCoderAgent([_coder_error("still broken")])
-    tool = FakeToolAgent(commit_response=_tool_ok("commit_and_push"))
+    planner = FakePlannerAgent(plan_responses=[plan_ok([step])])
+    coder = FakeCoderAgent([coder_error("still broken")])
+    tool = FakeToolAgent(commit_response=tool_ok("commit_and_push"))
     orchestrator = make_orchestrator(planner, coder, tool, max_retries_per_step=2)
 
     result = orchestrator.run(task_id="t5", goal="add add()", branch_name="feat/x")
@@ -218,9 +121,9 @@ def test_a_coder_call_that_keeps_failing_escalates_after_the_retry_budget():
 
 def test_a_failing_test_run_is_retried_via_the_coder_and_then_succeeds():
     step = PlanStep(step_id=1, description="add add()")
-    planner = FakePlannerAgent(plan_responses=[_plan_ok([step])], review_responses=[_review(1, approved=True)])
-    coder = FakeCoderAgent([_coder_ok(1, tests_passed=False), _coder_ok(1, tests_passed=True)])
-    tool = FakeToolAgent(commit_response=_tool_ok("commit_and_push"), pr_response=_tool_ok("create_pull_request"))
+    planner = FakePlannerAgent(plan_responses=[plan_ok([step])], review_responses=[review(1, approved=True)])
+    coder = FakeCoderAgent([coder_ok(1, tests_passed=False), coder_ok(1, tests_passed=True)])
+    tool = FakeToolAgent(commit_response=tool_ok("commit_and_push"), pr_response=tool_ok("create_pull_request"))
     orchestrator = make_orchestrator(planner, coder, tool, max_retries_per_step=2)
 
     result = orchestrator.run(task_id="t6", goal="add add()", branch_name="feat/x")
@@ -237,11 +140,11 @@ def test_a_review_rejection_despite_passing_tests_is_retried():
     sufficient on its own, so a review rejection is acted on even though tests_passed=True."""
     step = PlanStep(step_id=1, description="add add()")
     planner = FakePlannerAgent(
-        plan_responses=[_plan_ok([step])],
-        review_responses=[_review(1, approved=False, feedback="test asserts the wrong function"), _review(1, approved=True)],
+        plan_responses=[plan_ok([step])],
+        review_responses=[review(1, approved=False, feedback="test asserts the wrong function"), review(1, approved=True)],
     )
-    coder = FakeCoderAgent([_coder_ok(1, tests_passed=True), _coder_ok(1, tests_passed=True)])
-    tool = FakeToolAgent(commit_response=_tool_ok("commit_and_push"), pr_response=_tool_ok("create_pull_request"))
+    coder = FakeCoderAgent([coder_ok(1, tests_passed=True), coder_ok(1, tests_passed=True)])
+    tool = FakeToolAgent(commit_response=tool_ok("commit_and_push"), pr_response=tool_ok("create_pull_request"))
     orchestrator = make_orchestrator(planner, coder, tool, max_retries_per_step=2)
 
     result = orchestrator.run(task_id="t7", goal="add add()", branch_name="feat/x")
@@ -254,11 +157,11 @@ def test_a_review_rejection_despite_passing_tests_is_retried():
 def test_multi_step_plan_calls_tool_agent_only_once_at_the_end():
     steps = [PlanStep(step_id=1, description="step one"), PlanStep(step_id=2, description="step two")]
     planner = FakePlannerAgent(
-        plan_responses=[_plan_ok(steps)],
-        review_responses=[_review(1, approved=True), _review(2, approved=True)],
+        plan_responses=[plan_ok(steps)],
+        review_responses=[review(1, approved=True), review(2, approved=True)],
     )
-    coder = FakeCoderAgent([_coder_ok(1, tests_passed=True, files=["a.py"]), _coder_ok(2, tests_passed=True, files=["b.py"])])
-    tool = FakeToolAgent(commit_response=_tool_ok("commit_and_push"), pr_response=_tool_ok("create_pull_request"))
+    coder = FakeCoderAgent([coder_ok(1, tests_passed=True, files=["a.py"]), coder_ok(2, tests_passed=True, files=["b.py"])])
+    tool = FakeToolAgent(commit_response=tool_ok("commit_and_push"), pr_response=tool_ok("create_pull_request"))
     orchestrator = make_orchestrator(planner, coder, tool)
 
     result = orchestrator.run(task_id="t8", goal="two steps", branch_name="feat/x")
@@ -272,9 +175,9 @@ def test_multi_step_plan_calls_tool_agent_only_once_at_the_end():
 
 def test_step_budget_circuit_breaker_escalates_before_completing_even_a_simple_plan():
     step = PlanStep(step_id=1, description="add add()")
-    planner = FakePlannerAgent(plan_responses=[_plan_ok([step])], review_responses=[_review(1, approved=True)])
-    coder = FakeCoderAgent([_coder_ok(1, tests_passed=True)])
-    tool = FakeToolAgent(commit_response=_tool_ok("commit_and_push"), pr_response=_tool_ok("create_pull_request"))
+    planner = FakePlannerAgent(plan_responses=[plan_ok([step])], review_responses=[review(1, approved=True)])
+    coder = FakeCoderAgent([coder_ok(1, tests_passed=True)])
+    tool = FakeToolAgent(commit_response=tool_ok("commit_and_push"), pr_response=tool_ok("create_pull_request"))
     orchestrator = make_orchestrator(planner, coder, tool, max_orchestrator_steps=2)
 
     result = orchestrator.run(task_id="t9", goal="add add()", branch_name="feat/x")
@@ -285,9 +188,9 @@ def test_step_budget_circuit_breaker_escalates_before_completing_even_a_simple_p
 
 def test_a_tool_agent_failure_escalates():
     step = PlanStep(step_id=1, description="add add()")
-    planner = FakePlannerAgent(plan_responses=[_plan_ok([step])], review_responses=[_review(1, approved=True)])
-    coder = FakeCoderAgent([_coder_ok(1, tests_passed=True)])
-    tool = FakeToolAgent(commit_response=_tool_error("push failed"))
+    planner = FakePlannerAgent(plan_responses=[plan_ok([step])], review_responses=[review(1, approved=True)])
+    coder = FakeCoderAgent([coder_ok(1, tests_passed=True)])
+    tool = FakeToolAgent(commit_response=tool_error("push failed"))
     orchestrator = make_orchestrator(planner, coder, tool)
 
     result = orchestrator.run(task_id="t10", goal="add add()", branch_name="feat/x")
