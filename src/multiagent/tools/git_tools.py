@@ -16,6 +16,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from multiagent.guardrails.secret_scanner import scan_for_secrets
+from multiagent.tools.filesystem import ReadOnlyFilesystem, SandboxViolationError
+
 
 @dataclass(frozen=True)
 class ToolCommandResult:
@@ -24,6 +27,13 @@ class ToolCommandResult:
     output: str
     duration_seconds: float
     timed_out: bool = False
+
+
+def _refusal(reason: str) -> ToolCommandResult:
+    """A failed result for something refused before any command ran. Never contains the secret."""
+    return ToolCommandResult(
+        success=False, return_code=-1, output=f"refusing: {reason}", duration_seconds=0.0
+    )
 
 
 def _reject_flag_like_value(value: str, field_name: str) -> None:
@@ -38,7 +48,24 @@ class GitTools:
 
     def __init__(self, repo_root: str | Path, timeout_seconds: float = 30.0):
         self._root = Path(repo_root).resolve()
+        self._sandbox = ReadOnlyFilesystem(self._root)
         self._timeout_seconds = timeout_seconds
+
+    def _unstageable_reason(self, paths: Sequence[str]) -> str | None:
+        """Why these paths must not be staged, or None. Only explicit existing files inside the
+        repo, none protected (e.g. `.env`), none containing a secret (first 200 KB, the same cap
+        as every read). No directories or "." -- those would stage files nobody named."""
+        for path in paths:
+            try:
+                resolved = self._sandbox.resolve_within_sandbox(path)
+            except SandboxViolationError as exc:
+                return str(exc)
+            if not resolved.is_file():
+                return f"{path!r} is not an existing file (stage files explicitly, no directories or '.')"
+            kinds = scan_for_secrets(self._sandbox.read_file(path))
+            if kinds:
+                return f"{path!r} appears to contain a secret ({', '.join(kinds)})"
+        return None
 
     def _run(self, args: list[str]) -> ToolCommandResult:
         started = time.monotonic()
@@ -77,8 +104,12 @@ class GitTools:
     def commit(self, message: str, paths: Sequence[str]) -> ToolCommandResult:
         if not message:
             raise ValueError("commit message must not be empty")
+        if kinds := scan_for_secrets(message):
+            return _refusal(f"the commit message appears to contain a secret ({', '.join(kinds)})")
+        if reason := self._unstageable_reason(paths):
+            return _refusal(reason)
         if paths:
-            add_result = self._run(["git", "add", *paths])
+            add_result = self._run(["git", "add", "--", *paths])
             if not add_result.success:
                 return add_result
         return self._run(["git", "commit", "-m", message])
@@ -90,4 +121,6 @@ class GitTools:
     def create_pull_request(self, title: str, body: str, base: str = "main") -> ToolCommandResult:
         if not title:
             raise ValueError("PR title must not be empty")
+        if kinds := scan_for_secrets(f"{title} {body}"):
+            return _refusal(f"the PR title/body appears to contain a secret ({', '.join(kinds)})")
         return self._run(["gh", "pr", "create", "--title", title, "--body", body, "--base", base])

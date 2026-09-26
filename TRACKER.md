@@ -338,5 +338,13 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   actually bypass a naive check on this Windows machine (all of them did, incl. an NTFS stream and a
   symlink). The Coder now validates every proposed write under the write policy plus a size cap before
   writing any file. A failing test also caught that `resolve()` doesn't reject a NUL byte here. 69 new
-  tests, 308 passing overall. Remaining Phase 9 work: secret scanning, git path hardening, wiring the
+  tests, 308 passing overall. Remaining Phase 9 work (after the next entry): wiring the
   input guardrail, subprocess hardening.
+- 2026-09-26 — Second Phase 9 component landed on `feat/secret-scanning`: an outbound secret
+  scanner (kinds only, never values; conservative about placeholders so model-written test fixtures
+  don't block every commit), applied to files staged by `GitTools.commit`, commit messages, PR
+  title/body and `MemoryStore.remember`. Also hardened `git add`: explicit existing files only, none
+  protected, `--` before paths so `-A` can't be read as an option. Test fixtures assemble fake tokens
+  at runtime so no token-shaped literal ever reaches this public repo (GitHub push protection).
+  Scanned all 95 tracked files as a false-positive check: zero findings. 38 new tests, 346 passing.
+  Remaining: wire the input guardrail into the orchestrator, subprocess hardening.

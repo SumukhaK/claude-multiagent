@@ -315,3 +315,22 @@ and fixes, each verified against the real system, are recorded here as they land
 - **An embedded NUL byte was not rejected by `resolve()` on this platform** (found by a failing
   test), so a write containing one would have crashed with an uncaught `ValueError`; it's now an
   explicit sandbox violation.
+- **Outbound secret scanning (`multiagent/guardrails/secret_scanner.py`).** The mirror image of the
+  Phase 2 input filter: that stops a user *asking* for secrets; this stops secrets *leaving* —
+  through model-written files, commit messages, PR text, or persisted memory (a user can paste a
+  key into a clarification answer, which memory would otherwise store verbatim on disk and recall
+  into future prompts). Well-known token formats (private keys, AWS, GitHub, `sk-…` API keys,
+  Slack, Google, JWTs, credentials embedded in URLs) plus a deliberately conservative
+  hardcoded-assignment rule that ignores placeholder-looking values, because model-written tests
+  are full of `api_key = "test_api_key_123…"` and a false positive blocks a task. Findings are
+  *kinds only, never values*, so they're safe to log. Run over all 95 tracked files in this repo as
+  a false-positive check: zero findings. Best-effort, like every guardrail here — a novel secret
+  format or an obfuscated one (split across strings, base64) passes.
+- **`git add` hardening.** `GitTools.commit` passed model-supplied paths straight to `git add`:
+  no `--`, directories and `.` allowed (staging files nobody named, including a protected `.env`
+  that wasn't gitignored), no secret check. It now stages only explicit, existing files inside the
+  repo, none protected, none containing a secret, with `--` so a path can never be read as an
+  option (`-A` is refused rather than run). The commit message and PR title/body are scanned too,
+  since they're LLM-generated from context. Scanning covers the first 200 KB of a file (the same
+  cap as every read; the Coder can't write more than that, but a pre-existing larger file is only
+  partly scanned).

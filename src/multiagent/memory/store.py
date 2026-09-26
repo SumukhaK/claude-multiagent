@@ -19,6 +19,7 @@ from multiagent.guardrails.input_filter import (
     sanitize_tool_output,
     scan_tool_output_for_injection_markers,
 )
+from multiagent.guardrails.secret_scanner import scan_for_secrets
 
 # mem0 reads this at import time and defaults to sending PostHog telemetry; this project is
 # local-first, so it must be set before mem0 is ever imported (see build_mem0_store below).
@@ -74,6 +75,11 @@ class MemoryStore:
     def remember(self, text: str, kind: str) -> bool:
         """Store `text` verbatim under this project. Returns False if skipped or the backend failed."""
         if not text.strip():
+            return False
+        if kinds := scan_for_secrets(text):
+            # Kinds only, never the value: a user can paste a key into a clarification answer, and
+            # storing it would persist it on disk and recall it into future prompts.
+            logger.warning("memory refused to store text containing a secret (%s)", ", ".join(kinds))
             return False
         try:
             self._memory.add(text, user_id=self._project_id, infer=False, metadata={"kind": kind})

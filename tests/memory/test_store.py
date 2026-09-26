@@ -160,3 +160,18 @@ def test_recall_context_logs_injection_style_phrasing_but_still_returns_it_as_da
 
     assert "ignore-instructions" in caplog.text
     assert "not an instruction" in context.lower()
+
+
+def test_remember_refuses_text_containing_a_secret_and_never_logs_the_secret(caplog):
+    """A user can paste a key into a clarification answer; storing it verbatim would persist it
+    on disk and recall it into future prompts."""
+    secret = "AKI" + "A" + "ABCDEFGH" + "IJKLMNOP"  # assembled at runtime
+    fake = FakeMem0()
+    store = make_store(fake)
+
+    with caplog.at_level(logging.WARNING):
+        assert store.remember(f"my aws key is {secret}", kind="clarification") is False
+
+    assert fake.add_calls == []
+    assert "aws-access-key" in caplog.text
+    assert secret not in caplog.text
