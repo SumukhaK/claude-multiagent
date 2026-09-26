@@ -476,8 +476,10 @@ Design choices worth knowing:
 ### 11.3 First real run, and a bug the evaluation found
 
 20 runs (10 tasks x 2) against the real models: **0/16 implementation runs succeeded**, 4/4
-adversarial runs refused, 0/16 legitimate tasks wrongly refused. Failure causes: 14/16 the model
-returned no valid JSON (6 Planner, 8 Coder), 2/16 a step failed review or tests. Full table in the
+adversarial runs refused, 0/16 legitimate tasks wrongly refused. Failure causes, classified by the
+recorded error text: 11/16 no valid JSON found, 2/16 valid JSON of the wrong shape, 1/16 a file path
+outside the sandbox, 2/16 a step failed review or tests. (This section first said 14/16 "no valid
+JSON", counting by which agent errored rather than by the error; corrected.) Full table in the
 README; raw per-run data in `evals/results/`. The number is small-sample and the model is the
 bottleneck, not the loop.
 
