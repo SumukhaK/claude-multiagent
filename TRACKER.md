@@ -143,7 +143,7 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 | 3 | Context engineering: per-agent `ContextManager` (token budget, tool-history eviction, summarization compaction), hardware-derived budget helpers for the llama-server and Ollama backends, Ollama client now sets `num_ctx` explicitly | ✅ |
 | 4 | Planning agent: read-only filesystem tools, clarification-question flow, plan schema + validator, prompt template | ✅ |
 | 5 | Coding agent: TDD-enforcing workflow, sandboxed file write/edit tool, sandboxed pytest execution tool, mandatory step-review gate | ✅ |
-| 6 | Tool agent: git/gh wrapper tools (branch/commit/push/PR), allowlisted commands only, hardware/emulator test runner (best-effort/stretch), retry + timeout + circuit-breaker logic | 🔶 |
+| 6 | Tool agent: git/gh wrapper tools (branch/commit/push/PR), allowlisted commands only, hardware/emulator test runner (best-effort/stretch), retry + timeout + circuit-breaker logic | ✅ |
 | 7 | Orchestrator: LangGraph state machine wiring all three agents, human-in-the-loop clarification interrupt, retry/escalation policy, hard step-budget circuit breaker, end-to-end test | ⬜ |
 | 8 | Memory layer: local mem0 (local embeddings via `nomic-embed-text`, local vector store), wired into Planner + Coder | ⬜ |
 | 9 | Guardrails & security hardening pass: expand injection/secret-exfiltration filters, sandbox/tool-allowlist audit | ⬜ |
@@ -267,3 +267,15 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   own retry budget. No dependency on git/LLM/any specific agent, so Phase 7's orchestrator and
   the Tool agent (next) both reuse this instead of hand-rolling retry logic per call site.
   10 new tests, 166 passing overall.
+- 2026-09-26 — Third and final Phase 6 component landed on `feat/tool-agent-core`:
+  `HardwareTestRunner` (best-effort — detects `adb` availability honestly, no subprocess launched
+  when it's missing) and `ToolAgent`, composing `GitTools` + the Ollama-backed
+  `generate_commit_message` (retried, falls back to the raw summary text on failure) +
+  `HardwareTestRunner`, with a shared circuit breaker across push/PR-create only (the
+  network-dependent, correlated-failure-prone operations — not the local, deterministic
+  create_branch/commit). `max_retries` means total attempts everywhere in this class, consistently.
+  Live-verified against the real CPU-only Ollama model: commit-message generation — a short
+  natural-language string, not nested JSON — came back clean on the first try, a useful
+  counterpoint to Phase 4/5's findings recorded in REQUIREMENTS.md §8 — matching the LLM's job to
+  what a small model can actually do reliably is itself a design decision. 20 new tests
+  (13 ToolAgent + 7 HardwareTestRunner), 186 tests passing overall. **Phase 6 complete.**

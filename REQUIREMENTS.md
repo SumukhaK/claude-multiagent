@@ -205,3 +205,14 @@ with tool output in it, so compaction is load-bearing, not optional headroom.
   pre-validation in Phase 5 was designed to do. This is the kind of thing worth confirming
   against the real, messy model rather than trusting the synthetic escape attempts in unit tests
   alone.
+- **A counterpoint, not just more of the same problem: scoping the LLM's job down to short
+  natural-language generation makes it reliable, even on the weaker CPU-only model.** Live-verified
+  (Phase 6): the Tool agent's commit-message generation — a single short natural-language string,
+  not nested structured JSON — asked the CPU-only `qwen2.5:7b-instruct` (Ollama) to summarize "added
+  a /health endpoint... returning {'status': 'ok'}" and got back `"Added /health endpoint to
+  FastAPI app returning {"status": "ok"}"` in ~14.4s for 16 tokens (consistent with the ~1.4 tok/s
+  measured in Phase 1) — clean, correct, no parsing needed at all. The lesson isn't "this model
+  is good" or "that model is bad" — it's that matching the task's shape to what a small model can
+  actually do reliably (short generation vs. nested schema-constrained JSON with real code
+  content) is itself a design decision, and this project deliberately narrowed the Tool agent's
+  LLM usage to exactly the part that's reliable, keeping every git/gh action itself deterministic.

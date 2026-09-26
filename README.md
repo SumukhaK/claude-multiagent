@@ -111,6 +111,12 @@ note per phase as it lands.
   report. TDD is enforced at the schema level (a proposal with no test files fails validation), a
   failing test run is reported as useful data rather than a system error, and files are never
   rolled back on failure. Live-verified twice against the real model — see REQUIREMENTS.md §8.
+- **Phase 6 — Tool agent**: deterministic, allowlisted `git`/`gh` wrappers (no shell strings, no
+  generic passthrough), a generic bounded-retry + circuit-breaker module reused across the whole
+  system, a best-effort hardware/emulator test runner that reports unavailability honestly, and
+  `ToolAgent` composing all three — the only agent with git/GitHub access. Its one LLM-assisted
+  step (commit-message generation) is deliberately scoped to short natural-language output, which
+  live-verified reliably on the CPU-only Ollama model — see REQUIREMENTS.md §8.
 
 ## Running locally
 
