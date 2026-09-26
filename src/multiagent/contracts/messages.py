@@ -63,8 +63,18 @@ class ToolExecutionReport(BaseModel):
     details: str = ""
 
 
+class StepReview(BaseModel):
+    """The Planning agent's review of one completed CodeChangeReport, before the orchestrator
+    advances to the next step (CLAUDE.md §4: this review gate is mandatory, not optional)."""
+
+    kind: Literal["step_review"] = "step_review"
+    step_id: int
+    approved: bool
+    feedback: str
+
+
 AgentPayload = Annotated[
-    Plan | CodeChangeReport | ToolExecutionReport, Field(discriminator="kind")
+    Plan | CodeChangeReport | ToolExecutionReport | StepReview, Field(discriminator="kind")
 ]
 
 

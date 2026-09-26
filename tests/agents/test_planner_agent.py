@@ -9,7 +9,14 @@ import httpx
 import pytest
 
 from multiagent.agents.planner.agent import PlannerAgent
-from multiagent.contracts.messages import AgentName, MessageStatus, Plan
+from multiagent.contracts.messages import (
+    AgentName,
+    CodeChangeReport,
+    MessageStatus,
+    Plan,
+    PlanStep,
+    StepReview,
+)
 from multiagent.llm.base import LLMResponse
 
 
@@ -119,3 +126,65 @@ def test_create_plan_includes_code_context_in_the_prompt_when_given():
 def test_planner_agent_rejects_a_non_positive_max_tokens_at_construction(bad_max_tokens):
     with pytest.raises(ValueError):
         PlannerAgent(llm_client=FakeLLMClient(), task_id="task-1", max_tokens=bad_max_tokens)
+
+
+def _report(tests_passed: bool = True) -> CodeChangeReport:
+    return CodeChangeReport(
+        step_id=1,
+        files_changed=["calc.py", "test_calc.py"],
+        tests_added=["test_calc.py"],
+        tests_passed=tests_passed,
+        summary="added add()",
+    )
+
+
+def test_review_step_returns_ok_with_an_approved_review():
+    llm = FakeLLMClient(text='{"kind": "step_review", "step_id": 1, "approved": true, "feedback": "looks correct"}')
+    agent = PlannerAgent(llm_client=llm, task_id="task-1")
+
+    message = agent.review_step(PlanStep(step_id=1, description="add add()"), _report())
+
+    assert message.status == MessageStatus.OK
+    assert isinstance(message.payload, StepReview)
+    assert message.payload.approved is True
+
+
+def test_review_step_returns_ok_with_a_rejected_review():
+    """A rejection is a legitimate, useful outcome for the orchestrator to act on - not a system
+    error, the same way a failing test run from the Coder isn't one either."""
+    llm = FakeLLMClient(
+        text='{"kind": "step_review", "step_id": 1, "approved": false, "feedback": "test does not cover the change"}'
+    )
+    agent = PlannerAgent(llm_client=llm, task_id="task-1")
+
+    message = agent.review_step(PlanStep(step_id=1, description="add add()"), _report())
+
+    assert message.status == MessageStatus.OK
+    assert message.payload.approved is False
+
+
+def test_review_step_returns_error_when_the_llm_call_fails():
+    llm = FakeLLMClient(error=httpx.ConnectError("connection refused"))
+    agent = PlannerAgent(llm_client=llm, task_id="task-1")
+
+    message = agent.review_step(PlanStep(step_id=1, description="add add()"), _report())
+
+    assert message.status == MessageStatus.ERROR
+
+
+def test_review_step_returns_error_when_the_response_cannot_be_parsed():
+    llm = FakeLLMClient(text="I don't think I can tell.")
+    agent = PlannerAgent(llm_client=llm, task_id="task-1")
+
+    message = agent.review_step(PlanStep(step_id=1, description="add add()"), _report())
+
+    assert message.status == MessageStatus.ERROR
+
+
+def test_review_step_includes_the_step_and_report_in_the_prompt():
+    llm = FakeLLMClient(text='{"kind": "step_review", "step_id": 1, "approved": true, "feedback": "ok"}')
+    agent = PlannerAgent(llm_client=llm, task_id="task-1")
+
+    agent.review_step(PlanStep(step_id=1, description="add add()"), _report())
+
+    assert "add add()" in llm.last_prompt

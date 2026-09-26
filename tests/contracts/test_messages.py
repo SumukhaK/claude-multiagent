@@ -14,6 +14,7 @@ from multiagent.contracts.messages import (
     MessageStatus,
     Plan,
     PlanStep,
+    StepReview,
     ToolExecutionReport,
 )
 
@@ -71,6 +72,20 @@ def test_tool_ok_message_with_tool_execution_report_payload():
 
     assert isinstance(message.payload, ToolExecutionReport)
     assert message.payload.action == "git push"
+
+
+def test_planner_ok_message_with_step_review_payload():
+    message = AgentMessage.model_validate(
+        {
+            "agent": "planner",
+            "task_id": "task-1",
+            "status": "ok",
+            "payload": {"kind": "step_review", "step_id": 1, "approved": True, "feedback": "looks correct"},
+        }
+    )
+
+    assert isinstance(message.payload, StepReview)
+    assert message.payload.approved is True
 
 
 def test_error_status_requires_a_non_empty_error_message():

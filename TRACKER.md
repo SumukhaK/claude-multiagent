@@ -144,7 +144,7 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 | 4 | Planning agent: read-only filesystem tools, clarification-question flow, plan schema + validator, prompt template | ✅ |
 | 5 | Coding agent: TDD-enforcing workflow, sandboxed file write/edit tool, sandboxed pytest execution tool, mandatory step-review gate | ✅ |
 | 6 | Tool agent: git/gh wrapper tools (branch/commit/push/PR), allowlisted commands only, hardware/emulator test runner (best-effort/stretch), retry + timeout + circuit-breaker logic | ✅ |
-| 7 | Orchestrator: LangGraph state machine wiring all three agents, human-in-the-loop clarification interrupt, retry/escalation policy, hard step-budget circuit breaker, end-to-end test | ⬜ |
+| 7 | Orchestrator: LangGraph state machine wiring all three agents, human-in-the-loop clarification interrupt, retry/escalation policy, hard step-budget circuit breaker, end-to-end test | 🔶 |
 | 8 | Memory layer: local mem0 (local embeddings via `nomic-embed-text`, local vector store), wired into Planner + Coder | ⬜ |
 | 9 | Guardrails & security hardening pass: expand injection/secret-exfiltration filters, sandbox/tool-allowlist audit | ⬜ |
 | 10 | Evaluation harness: golden task set, metrics (latency, token usage, tool success rate, hallucination rate + recovery, cost proxy), results appended to `README.md` | ⬜ |
@@ -279,3 +279,12 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   counterpoint to Phase 4/5's findings recorded in REQUIREMENTS.md §8 — matching the LLM's job to
   what a small model can actually do reliably is itself a design decision. 20 new tests
   (13 ToolAgent + 7 HardwareTestRunner), 186 tests passing overall. **Phase 6 complete.**
+- 2026-09-26 — Phase 7 started. First component landed on `feat/planner-review-step`: a new
+  `StepReview` contract payload and `PlannerAgent.review_step()` — the mandatory review gate
+  (CLAUDE.md §4) that didn't exist yet; Phases 4-6 only built the create-plan and
+  implement-step/tool-action building blocks. Live-verified against the real model and found a
+  real limitation, not assumed: given a step asking for `add(a, b)` and a report whose own
+  summary said the test asserts `calculate(2, 3) == 5` — a mismatch spelled out in plain text —
+  the review still came back `approved: true`. Recorded in REQUIREMENTS.md §8; the orchestrator
+  (next component) therefore treats `tests_passed` as the primary gate and the review as an
+  additional signal, not the deciding vote. 16 new tests, 202 passing overall.
