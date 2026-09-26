@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     llama_flash_attn: bool = True
     llama_kv_cache_type: str = "q8_0"
     llama_threads: int = 6
+    llama_use_chat_template: bool = False  # wrap prompts in the model's own chat format (server-side)
     llama_constrain_json: bool = False  # grammar-constrain Planner/Coder output to their JSON schemas
     llama_log_path: str = "logs/llama-server.log"  # server stdout/stderr (gitignored)
 

@@ -41,6 +41,12 @@ def main() -> None:
         default=None,
         help="constrain Planner/Coder decoding to their JSON schemas (default: LLAMA_CONSTRAIN_JSON)",
     )
+    parser.add_argument(
+        "--chat-template",
+        action="store_true",
+        default=None,
+        help="wrap Planner/Coder prompts in the model's chat template (default: LLAMA_USE_CHAT_TEMPLATE)",
+    )
     parser.add_argument("--update-readme", action="store_true", help="publish the report into README.md")
     args = parser.parse_args()
 
@@ -69,7 +75,8 @@ def main() -> None:
     server.start()
     try:
         server.wait_until_healthy(timeout=120.0)
-        llama = LlamaServerClient(base_url=server.base_url)
+        use_template = settings.llama_use_chat_template if args.chat_template is None else args.chat_template
+        llama = LlamaServerClient(base_url=server.base_url, use_chat_template=use_template)
         ollama = OllamaClient(
             host=settings.ollama_host,
             model=settings.ollama_tool_model,

@@ -416,3 +416,8 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   Error-status agent messages and unsuccessful tool results count as failures (agents return errors
   rather than raising); prompts, responses and raw tool output are never recorded. Verified end to
   end with the real exporter. There is still no user-facing entrypoint to attach it to.
+- 2026-09-26 — Investigated the empty test files (`feat/llama-chat-template`). Not a metric bug: under
+  constrained decoding the model copied the `"..."` placeholders in the prompt's shape line. Added a
+  server-side chat-template option (`LLAMA_USE_CHAT_TEMPLATE`, default off). A first reading ("the
+  template fixes it") was wrong: a 2x2 showed the template and a reworded prompt are only useful
+  together; think-then-constrain was refuted. The prompt rewrite follows on its own branch.

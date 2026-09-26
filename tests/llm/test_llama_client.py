@@ -93,3 +93,65 @@ def test_generate_forwards_a_json_schema_so_the_server_constrains_decoding():
 
 def test_generate_sends_no_json_schema_field_by_default():
     assert "json_schema" not in _capture_payload()
+
+
+def _recording_handler(calls: list):
+    """Answers /apply-template with a templated prompt and /completion with an empty completion."""
+    import json
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        calls.append((request.url.path, body))
+        if request.url.path == "/apply-template":
+            return httpx.Response(200, json={"prompt": "<U>" + body["messages"][0]["content"] + "<A>"})
+        return httpx.Response(200, json={"content": "ok", "tokens_evaluated": 1, "tokens_predicted": 1})
+
+    return handler
+
+
+def test_with_chat_template_the_prompt_is_templated_by_the_server_before_completion():
+    """The reasoning model is trained on its chat format; the server knows it, so ask the server."""
+    calls = []
+    client = LlamaServerClient(base_url="http://127.0.0.1:8080", use_chat_template=True)
+
+    result = client.generate("hello", client=_client_with(_recording_handler(calls)))
+
+    assert [path for path, _ in calls] == ["/apply-template", "/completion"]
+    assert calls[0][1] == {"messages": [{"role": "user", "content": "hello"}]}
+    assert calls[1][1]["prompt"] == "<U>hello<A>"
+    assert result.text == "ok"
+
+
+def test_without_chat_template_the_prompt_is_sent_raw_and_no_template_call_is_made():
+    calls = []
+    client = LlamaServerClient(base_url="http://127.0.0.1:8080")
+
+    client.generate("hello", client=_client_with(_recording_handler(calls)))
+
+    assert [path for path, _ in calls] == ["/completion"]
+    assert calls[0][1]["prompt"] == "hello"
+
+
+def test_chat_template_and_json_schema_combine():
+    calls = []
+    client = LlamaServerClient(base_url="http://127.0.0.1:8080", use_chat_template=True)
+
+    client.generate("hi", json_schema={"type": "object"}, client=_client_with(_recording_handler(calls)))
+
+    assert calls[1][1]["prompt"] == "<U>hi<A>"
+    assert calls[1][1]["json_schema"] == {"type": "object"}
+
+
+def test_a_failing_template_request_raises_instead_of_silently_sending_a_raw_prompt():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(501, json={"error": "no template"})
+
+    client = LlamaServerClient(base_url="http://127.0.0.1:8080", use_chat_template=True)
+
+    try:
+        client.generate("hi", client=_client_with(handler))
+        raised = False
+    except httpx.HTTPStatusError:
+        raised = True
+
+    assert raised is True
