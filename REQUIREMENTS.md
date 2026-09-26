@@ -75,6 +75,23 @@ Tool agent model: Ollama `qwen2.5:7b-instruct`, invoked with GPU disabled for th
 All of the above are config values in `config/settings.py`, not hardcoded in agent code — they
 can be re-tuned (or the model swapped) without touching orchestration logic.
 
+**Measured on this hardware (`scripts/benchmark_llm.py`, 2026-09-26):**
+
+| Metric | Result |
+|---|---|
+| llama-server cold start → healthy | ~21s |
+| GPU memory with model loaded | ~1.2GB of 4GB VRAM |
+| GPU memory after server stop | back to 0 MiB (clean release) |
+| Generation throughput (GPU) | ~48–88 tok/s |
+| Ollama tool-agent call, CPU-only | ~1.4 tok/s, GPU stayed at 0 MiB throughout |
+
+The GPU-offload design is confirmed: weights + KV cache both fit with ~2.8GB of VRAM to spare,
+and the CPU-only Ollama call never touched the GPU, so the two never contend for VRAM. The
+CPU-only tool-agent path is honestly slow (~20s+ for a short structured response) — acceptable
+for infrequent git/PR calls, but flagged here as a real trade-off to revisit in a later phase
+(e.g. a smaller/faster tool-calling model, or letting the tool agent use a few GPU layers when
+llama-server is idle) rather than glossed over.
+
 ## 4. Inter-agent JSON contract (sketch — finalised in Phase 2)
 
 Every message between the orchestrator and a sub-agent is a pydantic model with at least:

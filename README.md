@@ -84,10 +84,23 @@ Development follows the phase plan in [TRACKER.md](TRACKER.md). This section gro
 note per phase as it lands.
 
 - **Phase 0 — Project scaffolding**: governance docs, config skeleton, and this repo created.
+- **Phase 1 — Local model serving**: tuned `llama-server` launcher (GPU offload, flash attention,
+  quantized KV cache, continuous batching) and a CPU-only Ollama client for the Tool agent, both
+  behind a shared `LLMClient` interface. Verified on this laptop's actual GPU — see
+  [REQUIREMENTS.md](REQUIREMENTS.md#3-hardware--local-inference-design) for the measured numbers.
 
 ## Running locally
 
-Setup instructions land here as each phase that needs them is implemented (Phase 1 onward).
+1. Install [uv](https://github.com/astral-sh/uv), then from the repo root:
+   ```
+   uv sync
+   cp .env.example .env   # adjust paths if your llama.cpp/model live elsewhere
+   ```
+2. Run the test suite: `uv run pytest`
+3. Manually verify local model serving on your own hardware:
+   `uv run python scripts/benchmark_llm.py`
+
+Further setup instructions land here as later phases add runnable pieces.
 
 ## Evaluation
 
