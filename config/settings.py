@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     ollama_host: str = "http://127.0.0.1:11434"
     ollama_tool_model: str = "qwen2.5:7b-instruct"
     ollama_tool_use_gpu: bool = False
+    ollama_tool_context_size: int = 4096
 
     # Orchestrator safety limits
     max_retries_per_step: int = 2

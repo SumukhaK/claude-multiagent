@@ -12,16 +12,31 @@ from multiagent.llm.base import LLMResponse
 class OllamaClient:
     """Thin wrapper around Ollama's /api/generate endpoint."""
 
-    def __init__(self, host: str, model: str, use_gpu: bool = False, timeout: float = 120.0):
+    def __init__(
+        self,
+        host: str,
+        model: str,
+        use_gpu: bool = False,
+        context_size: int | None = None,
+        timeout: float = 120.0,
+    ):
         self._host = host.rstrip("/")
         self._model = model
         self._use_gpu = use_gpu
+        self._context_size = context_size
         self._timeout = timeout
 
     def generate(
         self, prompt: str, *, max_tokens: int = 512, client: httpx.Client | None = None
     ) -> LLMResponse:
         started = time.monotonic()
+        options: dict[str, int] = {
+            "num_predict": max_tokens,
+            "num_gpu": 0 if not self._use_gpu else -1,
+        }
+        if self._context_size is not None:
+            options["num_ctx"] = self._context_size
+
         owns_client = client is None
         http_client = client or httpx.Client(timeout=self._timeout)
         try:
@@ -31,10 +46,7 @@ class OllamaClient:
                     "model": self._model,
                     "prompt": prompt,
                     "stream": False,
-                    "options": {
-                        "num_predict": max_tokens,
-                        "num_gpu": 0 if not self._use_gpu else -1,
-                    },
+                    "options": options,
                 },
             )
             response.raise_for_status()

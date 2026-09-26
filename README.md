@@ -45,10 +45,14 @@ flowchart TB
         MEM[mem0<br/>local memory]
         OTEL[OpenTelemetry<br/>logs + traces]
         GRD[Guardrails<br/>input filter + tool-output isolation]
+        CTX[ContextManager<br/>per-agent token budget + compaction]
     end
     O --- MEM
     O --- OTEL
     O --- GRD
+    P --- CTX
+    C --- CTX
+    T --- CTX
 ```
 
 **Design principles:** least-privilege tool access per agent, structured JSON contracts between
@@ -91,6 +95,11 @@ note per phase as it lands.
 - **Phase 2 — Shared infra**: the strict `AgentMessage` JSON contract sub-agents communicate
   through, OpenTelemetry tracing + a structured failure log for every agent/tool call, and a
   guardrail filter blocking secret-fishing requests while treating all tool output as inert data.
+- **Phase 3 — Context engineering**: every agent's conversation history is tracked against a
+  token budget derived from measured hardware (llama-server's `-np 2` splits its context per
+  slot, so Planner/Coder each get ~4096 tokens, not the full 8192) and compacted before it would
+  overflow — stale tool output evicted first, then older turns summarized. See
+  [REQUIREMENTS.md §6](REQUIREMENTS.md#6-context-engineering-treat-context-as-a-budget).
 
 ## Running locally
 

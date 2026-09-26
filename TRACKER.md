@@ -97,6 +97,13 @@ done/blocked/deferred instead of removing them.
 > We should have metrics for latency, token usage, tools success rate, hallunications and
 > recovery from them, total cost etc. And add it at the bottom of project readme on our git repo.
 
+### 0.1 Follow-up prompt (2026-09-26, context engineering — verbatim)
+
+> also forgot to mention context engineering techniques like compressing context history,
+> remove old tool call history whenever necessary, add commands like /compact in agents,
+> context summarization on all the agents . treat context as one of the budget as well. update
+> requirement, tracker and readme md s accordingly once done thinking
+
 ---
 
 ## 1. Decisions log
@@ -109,6 +116,7 @@ done/blocked/deferred instead of removing them.
 | D4 | Tool agent runs `qwen2.5:7b-instruct` via Ollama, **CPU-only** (GPU disabled for this call) | Avoids VRAM contention with the always-resident llama.cpp server; tool-call formatting is latency-tolerant, so CPU is an acceptable trade for keeping total system load balanced and avoiding the 85%+ utilisation risk the user flagged |
 | D5 | Orchestrator itself makes no LLM calls — pure LangGraph state machine / Python logic | Keeps hardware load minimal and the control flow deterministic and easy to reason about/test |
 | D6 | Python 3.11 + `uv` for the whole project | Already installed and working on this machine; matches the pydantic/LangGraph/mem0/OpenTelemetry ecosystem |
+| D7 | Inserted a new Phase 3 — **context engineering** — ahead of the Planning agent, renumbering old Phases 3–10 to 4–11 | User follow-up (§0.1): context compaction, tool-history eviction, per-agent summarization, and a `/compact`-equivalent needed to exist *before* any agent has a real conversation loop, not bolted on after. Also newly justified by a concrete hardware finding: `llama-server -np 2` makes this build's `--kv-unified` default to off, so the configured 8192-token context is actually split ~4096 tokens per Planner/Coder slot — a budget worth tracking explicitly. See REQUIREMENTS.md §6. |
 
 ## 2. Measured hardware (2026-09-26)
 
@@ -132,14 +140,15 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 | 0 | Project scaffolding: CLAUDE.md, README/REQUIREMENTS/NON_TECHNICAL/TRACKER docs, `config/settings.py`, `.env.example`, `pyproject.toml`, first test, GitHub repo created & pushed | ✅ |
 | 1 | Local model serving: tuned `llama-server` launch config (GPU offload, flash-attn, quantized KV cache, continuous batching), Ollama CPU-only helper for the tool model, a thin LLM client wrapper, smoke-test + micro-benchmark (tok/s, latency, VRAM) | ✅ |
 | 2 | Shared infra: pydantic JSON schemas for inter-agent messages, OpenTelemetry logging/tracing wrapper, guardrail input filter, config loader — all unit-tested with a stubbed LLM client | ✅ |
-| 3 | Planning agent: read-only filesystem tools, clarification-question flow, plan schema + validator, prompt template | ⬜ |
-| 4 | Coding agent: TDD-enforcing workflow, sandboxed file write/edit tool, sandboxed pytest execution tool, mandatory step-review gate | ⬜ |
-| 5 | Tool agent: git/gh wrapper tools (branch/commit/push/PR), allowlisted commands only, hardware/emulator test runner (best-effort/stretch), retry + timeout + circuit-breaker logic | ⬜ |
-| 6 | Orchestrator: LangGraph state machine wiring all three agents, human-in-the-loop clarification interrupt, retry/escalation policy, hard step-budget circuit breaker, end-to-end test | ⬜ |
-| 7 | Memory layer: local mem0 (local embeddings via `nomic-embed-text`, local vector store), wired into Planner + Coder | ⬜ |
-| 8 | Guardrails & security hardening pass: expand injection/secret-exfiltration filters, sandbox/tool-allowlist audit | ⬜ |
-| 9 | Evaluation harness: golden task set, metrics (latency, token usage, tool success rate, hallucination rate + recovery, cost proxy), results appended to `README.md` | ⬜ |
-| 10 | Polish: finalize architecture diagram, changelog, demo | ⬜ |
+| 3 | Context engineering: per-agent `ContextManager` (token budget, tool-history eviction, summarization compaction), hardware-derived budget helpers for the llama-server and Ollama backends, Ollama client now sets `num_ctx` explicitly | ✅ |
+| 4 | Planning agent: read-only filesystem tools, clarification-question flow, plan schema + validator, prompt template | ⬜ |
+| 5 | Coding agent: TDD-enforcing workflow, sandboxed file write/edit tool, sandboxed pytest execution tool, mandatory step-review gate | ⬜ |
+| 6 | Tool agent: git/gh wrapper tools (branch/commit/push/PR), allowlisted commands only, hardware/emulator test runner (best-effort/stretch), retry + timeout + circuit-breaker logic | ⬜ |
+| 7 | Orchestrator: LangGraph state machine wiring all three agents, human-in-the-loop clarification interrupt, retry/escalation policy, hard step-budget circuit breaker, end-to-end test | ⬜ |
+| 8 | Memory layer: local mem0 (local embeddings via `nomic-embed-text`, local vector store), wired into Planner + Coder | ⬜ |
+| 9 | Guardrails & security hardening pass: expand injection/secret-exfiltration filters, sandbox/tool-allowlist audit | ⬜ |
+| 10 | Evaluation harness: golden task set, metrics (latency, token usage, tool success rate, hallucination rate + recovery, cost proxy), results appended to `README.md` | ⬜ |
+| 11 | Polish: finalize architecture diagram, changelog, demo | ⬜ |
 
 ## 4. Phase log
 
@@ -177,3 +186,13 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   instruction-like phrasing in tool output for logging, without blocking legitimate output) in
   `multiagent/guardrails/input_filter.py`. 9 new tests, all passing. **Phase 2 complete** — 49
   tests passing overall.
+- 2026-09-26 — Phase 3 (context engineering, newly inserted per D7) landed on
+  `feat/context-engineering`: `ContextManager` in `multiagent/context/manager.py` — token-budget
+  tracking (`should_warn`/`needs_compaction`), tool-output eviction, summary compaction via an
+  injected summarizer, and `maybe_compact()` as this system's non-interactive `/compact`.
+  `llama_agent_token_budget()`/`ollama_agent_token_budget()` derive each agent's real usable
+  context from measured hardware behavior (see REQUIREMENTS.md §6). Also updated
+  `OllamaClient` (Phase 1) to set `num_ctx` explicitly from the new `ollama_tool_context_size`
+  setting, so the tracked budget matches the model's actual runtime context window instead of
+  drifting from it. 14 new context tests + 2 new Ollama client tests, 65 tests passing overall.
+  **Phase 3 complete.**
