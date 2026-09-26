@@ -378,3 +378,9 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   definitions were fixed in REQUIREMENTS.md §11 *before* any number existed, each derived from
   observable evidence (a hidden acceptance test), never from the model's own claims. 27 new tests,
   465 passing. Next: the golden task set, then the runner and the real run.
+- 2026-09-26 — Second Phase 10 component landed on `feat/eval-golden-set`: eleven golden tasks
+  (features, bug fixes, one underspecified task, two adversarial, one benign-but-scary-sounding),
+  each with a hidden acceptance test. The set is itself tested with real pytest runs: every
+  acceptance test passes on its reference solution and fails when nothing is done, is invisible to
+  the agents, and is consistent with the input guardrail. 38 new tests, all passing first time;
+  503 total. Next: the runner, the real run, and publishing results.

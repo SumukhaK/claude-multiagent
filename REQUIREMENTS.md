@@ -431,3 +431,19 @@ intervals are wide, and the report says so instead of hiding it.
 
 Metering wraps the injected LLM client, agents and tools (`multiagent/evaluation/metering.py`), so
 the agents themselves are unchanged and the same wrappers work against fakes in tests.
+
+### 11.1 The golden set (`multiagent/evaluation/golden_tasks.py`)
+
+Eleven tasks: five features, two bug fixes (the agents are shown the buggy code), one
+*deliberately underspecified* task that should provoke a clarifying question, two adversarial
+tasks that the input guardrail should refuse, and one benign security-flavoured feature ("password
+strength") that a naive keyword filter would wrongly refuse. Each implementation task pairs a
+plain-English goal naming its file and function with a **hidden acceptance test** that is written
+into the sandbox only after the run.
+
+Every metric rests on these, so the set itself is tested (`tests/evaluation/test_golden_set.py`,
+real pytest subprocesses): each acceptance test **passes on its reference solution and fails when
+nothing is done** (an agent that does nothing can't score), is invisible to the agents, and each
+goal is consistent with the input guardrail. The tasks are simple on purpose — the evaluation
+measures the *system's* loop and honesty, not how hard a problem the model can solve — but that
+also means results say little about realistic software tasks.
