@@ -13,6 +13,9 @@ __pycache__/
 # uv
 .python-version
 
+# Local memory store (mem0 vector data, generated at runtime)
+.memory/
+
 # Logs & traces (generated at runtime)
 logs/
 *.log

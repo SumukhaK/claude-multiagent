@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     ollama_tool_use_gpu: bool = False
     ollama_tool_context_size: int = 4096
 
+    # Memory layer (mem0, local): embeddings via Ollama, vector store on disk
+    memory_path: str = ".memory"
+    memory_embedding_model: str = "nomic-embed-text"
+    memory_embedding_dims: int = 768
+    memory_recall_limit: int = 3
+    memory_recall_max_chars: int = 600
+
     # Orchestrator safety limits
     max_retries_per_step: int = 2
     max_orchestrator_steps: int = 25

@@ -246,3 +246,34 @@ with tool output in it, so compaction is load-bearing, not optional headroom.
   designed to do when the underlying model can't complete a task — which is the honest measure of
   success for this phase, not a fully green run. Systematic characterization of how often this
   happens is Phase 10's job, not a handful of manual runs.
+
+## 9. Memory layer (Phase 8)
+
+Local mem0 (`multiagent/memory/store.py`), wrapped in a small project-scoped `MemoryStore`.
+
+- **No LLM, on purpose.** Memories are stored verbatim (`infer=False`); the mem0 config
+  deliberately has no `llm` section. mem0's default fact-extraction step would send every memory
+  through a model on hardware where model budget is the scarcest resource (§3), and the CPU-only
+  7B would take ~20s+ per memory. Embeddings only: Ollama `nomic-embed-text` + an on-disk qdrant
+  store. Measured live: storing 4 memories ~0.4s, recall ~0.02s, GPU memory +4 MiB — the
+  embedder is effectively free next to llama-server's ~1.2GB.
+- **Telemetry off.** mem0 sends PostHog telemetry by default, read at import time. The store
+  module sets `MEM0_TELEMETRY=False` before mem0 is ever imported (mem0 is imported lazily in
+  `build_mem0_store` for exactly this reason). Local-first means nothing leaves the machine.
+- **One client, many projects.** Found live: local qdrant allows one client per storage folder
+  per process, so per-project clients crash. `MemoryStore.for_project()` shares one client;
+  projects are separated by mem0's `user_id` scope, and verified not to leak into each other.
+- **Fail soft, never silently.** Memory is an enhancement, not a dependency of correctness:
+  if the embedder is down, `remember`/`recall` log a warning and return `False`/`[]` instead of
+  killing a coding task (a deliberate broad `except` at a third-party boundary, commented as such).
+- **Recalled text is data, and it's budgeted.** `recall_context()` caps output at
+  `memory_recall_max_chars` (default 600, roughly 150 tokens of the ~4096-token slot, §6) and
+  wraps it with the same guardrail used for tool output, logging injection-style phrasing —
+  because stored memories originate from model output and could carry it.
+- **A hypothesis tested and rejected:** `nomic-embed-text` documents `search_query:` /
+  `search_document:` prefixes, which mem0 doesn't add. On an 8-memory set with 6 queries, plain
+  text ranked the right memory first 6/6; with the prefixes 5/6. So no prefixes. Small sample —
+  a caveat, not proof; Phase 10 is where retrieval quality gets measured properly.
+- **Not installed, deliberately:** mem0's optional extras (spaCy entity extraction, fastembed
+  BM25 keyword search) print warnings that they're missing. They'd add a heavy dependency for
+  hybrid retrieval that plain vector search doesn't currently need.
