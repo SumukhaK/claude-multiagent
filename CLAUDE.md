@@ -105,9 +105,15 @@ for the measured specs and the reasoning behind the current allocation:
 
 ## 7. Git workflow & commits
 
-- One feature (or one phase's slice of work) per branch, per PR. No unrelated changes bundled in.
+- One feature, one bugfix, or one enhancement per branch, per PR — never bundled together. A
+  phase is a planning unit in TRACKER.md, not a branch; if a phase has three components (say, a
+  schema, an observability wrapper, and a guardrail filter), that's three branches and three PRs,
+  not one.
 - Every PR is self-reviewed by Claude Code against the checklist in §8 before merge. If review
   finds problems, they're fixed and re-reviewed — never merged with known issues.
+- Merge with a regular merge (`gh pr merge --merge`), not squash — keep the branch's real commit
+  history on `main` rather than collapsing it into one commit. Only merge once tests pass and
+  self-review is clean.
 - Conventional commits: `type(scope): description`, lowercase, imperative, no trailing period.
 
   | Type | When |
