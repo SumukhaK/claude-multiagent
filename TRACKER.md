@@ -141,7 +141,7 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 | 1 | Local model serving: tuned `llama-server` launch config (GPU offload, flash-attn, quantized KV cache, continuous batching), Ollama CPU-only helper for the tool model, a thin LLM client wrapper, smoke-test + micro-benchmark (tok/s, latency, VRAM) | ✅ |
 | 2 | Shared infra: pydantic JSON schemas for inter-agent messages, OpenTelemetry logging/tracing wrapper, guardrail input filter, config loader — all unit-tested with a stubbed LLM client | ✅ |
 | 3 | Context engineering: per-agent `ContextManager` (token budget, tool-history eviction, summarization compaction), hardware-derived budget helpers for the llama-server and Ollama backends, Ollama client now sets `num_ctx` explicitly | ✅ |
-| 4 | Planning agent: read-only filesystem tools, clarification-question flow, plan schema + validator, prompt template | 🔶 |
+| 4 | Planning agent: read-only filesystem tools, clarification-question flow, plan schema + validator, prompt template | ✅ |
 | 5 | Coding agent: TDD-enforcing workflow, sandboxed file write/edit tool, sandboxed pytest execution tool, mandatory step-review gate | ⬜ |
 | 6 | Tool agent: git/gh wrapper tools (branch/commit/push/PR), allowlisted commands only, hardware/emulator test runner (best-effort/stretch), retry + timeout + circuit-breaker logic | ⬜ |
 | 7 | Orchestrator: LangGraph state machine wiring all three agents, human-in-the-loop clarification interrupt, retry/escalation policy, hard step-budget circuit breaker, end-to-end test | ⬜ |
@@ -203,3 +203,18 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   pathlib gotcha: joining an absolute path onto a base path silently discards the base — the
   check runs on the final *resolved* path, so it still catches this). 10 new tests, 75 passing
   overall.
+- 2026-09-26 — Second and final Phase 4 component landed on `feat/planning-agent-core`:
+  prompt template (`multiagent/agents/planner/prompts.py`), response parser
+  (`response_parser.py`), and `PlannerAgent.create_plan()` composing them with an injected
+  `LLMClient`. Live-verified against the real llama-server + model on this machine (not just
+  mocked tests) and found two real parser bugs this way — a naive greedy brace-match matching an
+  unrelated `{"status": "ok"}` fragment in the model's own prose, and `<think>` stripping
+  assuming a matched opening tag that this model's raw-completion output doesn't actually emit.
+  Both fixed with a proper balanced-brace scanner and a fallback for a bare `</think>`. Also
+  surfaced a real, honest limitation — this 1.5B model's reasoning is verbose and sometimes never
+  reaches a valid answer even at 1200 `max_tokens` — recorded in REQUIREMENTS.md §8 rather than
+  hidden, with the parser now failing loudly and correctly on that rather than silently
+  mis-parsing. Also fixed a real design gap caught in self-review: an empty plan with no steps
+  and no clarifying questions was reported as "ok" — a degenerate response the orchestrator
+  would have silently treated as a completed empty plan — now reported as an error instead.
+  27 new tests, 102 tests passing overall. **Phase 4 complete.**

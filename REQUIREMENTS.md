@@ -171,3 +171,21 @@ with tool output in it, so compaction is load-bearing, not optional headroom.
 - Running more than one heavy local model on the GPU simultaneously.
 - Guaranteeing hardware/emulator test execution — best-effort only, given the hardware ceiling.
 - Multi-user support, auth, or hosting this as a service.
+
+## 8. Known limitations (measured, not assumed)
+
+- **The Planner's response parser is robust; the local model's reliability on this task is not
+  yet good, and that's measured rather than guessed.** Live-verified against the real
+  `DeepSeek-R1-Distill-Qwen-1.5B` server (Phase 4): its reasoning prefix regularly runs past
+  1000 tokens before reaching an answer, and even at 1200 `max_tokens` its reasoning was
+  sometimes too unfocused to reach a complete, schema-valid JSON plan at all. `parse_plan_response`
+  correctly raises `PlanParsingError` in that case — the fix in Phase 4 was making the parser fail
+  loudly and correctly on messy/truncated output (a naive greedy brace-match was matching an
+  unrelated fragment in the model's prose), not making the small model itself more reliable.
+- **Likely contributing factor, not yet tried:** the Planner currently talks to llama-server's raw
+  `/completion` endpoint with a plain-text prompt — no chat template is applied, even though
+  DeepSeek-R1-Distill models are tuned for chat-formatted turns. Trying the OpenAI-compatible
+  `/v1/chat/completions` endpoint with proper system/user roles is a reasonable next experiment,
+  but is deliberately left as a follow-up rather than iterated on ad hoc here.
+- **This is exactly what Phase 10's evaluation harness exists to measure systematically** (plan
+  success rate, hallucination rate) instead of relying on a handful of manual runs like this one.
