@@ -98,3 +98,19 @@ def test_configure_tracing_does_nothing_when_disabled(monkeypatch):
     configure_tracing(settings, _force=True)
 
     assert called["count"] == 0
+
+
+def test_configure_tracing_file_exporter_writes_one_json_span_per_line(monkeypatch, tmp_path):
+    captured = {}
+    monkeypatch.setattr(trace, "set_tracer_provider", lambda provider: captured.setdefault("provider", provider))
+    trace_path = tmp_path / "logs" / "traces.jsonl"
+
+    settings = Settings(_env_file=None, otel_enabled=True, otel_exporter="file", otel_trace_path=str(trace_path))
+    configure_tracing(settings, _force=True)
+    with captured["provider"].get_tracer("t").start_as_current_span("agent.planner.create_plan"):
+        pass
+    captured["provider"].force_flush()
+
+    lines = trace_path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0])["name"] == "agent.planner.create_plan"
