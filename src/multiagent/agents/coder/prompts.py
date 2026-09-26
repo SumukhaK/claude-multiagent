@@ -57,16 +57,22 @@ Rules:
 - Write real code and real tests, never placeholders."""
 
 
-def render_coder_prompt(step: PlanStep, code_context: str = "", constrained: bool = False) -> str:
+def render_coder_prompt(
+    step: PlanStep, code_context: str = "", constrained: bool = False, goal: str = ""
+) -> str:
     """Build the full prompt for one Coder turn. `constrained` says the response will be decoded
-    against the proposal's JSON schema, which selects the words-only format description."""
+    against the proposal's JSON schema, which selects the words-only format description. `goal` is
+    the overall task: a step often drops details it carries, such as a file name."""
     edge_cases_section = (
         f"\nKnown edge cases to handle: {', '.join(step.edge_cases)}" if step.edge_cases else ""
     )
     context_section = f"\n\nExisting code context:\n{code_context}" if code_context else ""
     format_section = _FORMAT_WORDS if constrained else _FORMAT_SHAPE
+    goal_section = (
+        f"Overall task (if it names a file, use that file name): {goal}\n\n" if goal else ""
+    )
     return (
-        f"{_CODER_INSTRUCTIONS}\n\n{format_section}\n\n"
+        f"{_CODER_INSTRUCTIONS}\n\n{format_section}\n\n{goal_section}"
         f"Step {step.step_id}: {step.description}{edge_cases_section}{context_section}\n\n"
         "Respond with the JSON object now."
     )

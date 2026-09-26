@@ -252,3 +252,11 @@ def test_the_agent_picks_the_words_prompt_only_when_it_is_constrained(agent_fact
 
     assert '"test_files": [{"path"' in plain.last_prompt
     assert '"test_files": [{"path"' not in constrained.last_prompt
+
+
+def test_implement_step_puts_the_goal_in_the_prompt(agent_factory):
+    llm = FakeLLMClient(text="not json")
+
+    agent_factory(llm).implement_step(_STEP, goal="Add add(a, b) in calc.py")
+
+    assert "Add add(a, b) in calc.py" in llm.last_prompt

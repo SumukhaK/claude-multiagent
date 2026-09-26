@@ -197,3 +197,33 @@ def test_a_tool_agent_failure_escalates():
 
     assert result["status"] == "failed"
     assert "push failed" in result["error"]
+
+
+def test_the_coder_is_given_the_original_goal_not_just_its_step():
+    """A step like "define add()" drops details the goal carries, such as the file name the task
+    names; the Coder never saw them and invented its own file names (found by inspecting failed runs)."""
+    step = PlanStep(step_id=1, description="Define the add function")
+    planner = FakePlannerAgent(plan_responses=[plan_ok([step])], review_responses=[review(1, approved=True)])
+    coder = FakeCoderAgent([coder_ok(1, tests_passed=True)])
+    tool = FakeToolAgent(commit_response=tool_ok("commit_and_push"), pr_response=tool_ok("create_pull_request"))
+
+    make_orchestrator(planner, coder, tool).run(task_id="g1", goal="Add add(a, b) in calc.py", branch_name="feat/x")
+
+    assert coder.goals == ["Add add(a, b) in calc.py"]
+
+
+def test_the_coder_gets_the_same_goal_the_planner_got_including_a_clarification_answer():
+    step = PlanStep(step_id=1, description="add add()")
+    planner = FakePlannerAgent(
+        plan_responses=[plan_needs_clarification(["which framework?"]), plan_ok([step])],
+        review_responses=[review(1, approved=True)],
+    )
+    coder = FakeCoderAgent([coder_ok(1, tests_passed=True)])
+    tool = FakeToolAgent(commit_response=tool_ok("commit_and_push"), pr_response=tool_ok("create_pull_request"))
+    orchestrator = make_orchestrator(planner, coder, tool)
+
+    orchestrator.run(task_id="g2", goal="add a thing", branch_name="feat/x")
+    orchestrator.resume(task_id="g2", answer="FastAPI")
+
+    assert coder.goals[-1] == planner.plan_calls[-1]
+    assert "FastAPI" in coder.goals[-1]

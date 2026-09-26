@@ -88,10 +88,12 @@ class FakeCoderAgent:
         self._responses = list(responses)
         self.calls = []
         self.contexts = []
+        self.goals = []
 
-    def implement_step(self, step, code_context=""):
+    def implement_step(self, step, code_context="", goal=""):
         self.calls.append(step.step_id)
         self.contexts.append(code_context)
+        self.goals.append(goal)
         return self._responses.pop(0) if len(self._responses) > 1 else self._responses[0]
 
 
