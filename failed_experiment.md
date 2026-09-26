@@ -182,25 +182,28 @@ Listed so the model is not blamed for them. Each was found by inspecting failure
 
 ## 5. What is not known
 
-- **That the model is the cause is an inference by elimination, not a test.** I never ran this
-  system with a stronger model. Four pipeline bugs were found by reading failures, so a fifth may
-  exist.
-- A stronger model could also hide a poorly designed pipeline, so a success would not prove the
-  design right either.
+- **Update: the test was run (section 8).** That the model was the cause was first only an
+  inference by elimination. With `qwen2.5:7b-instruct` in the same system, the hidden acceptance
+  test passed in 11 of 16 implementation runs, against 0 of 16 here, so model size was the main
+  cause of the failures in section 3.
+- A stronger model also exposed problems in the pipeline that the small model had hidden
+  (section 8), so a better model alone does not make the system succeed.
 - Samples are small (20 runs per configuration, one pass, non-deterministic; ablations of 12 to
   28 samples). Differences of a few runs are noise. The only firm result is the 0 of 16.
 
-*In plain English:* it is like a car that will not start. We replaced four broken parts and it
-still will not start, so we suspect the engine, but we have not swapped the engine to find out.
-Swapping in a bigger model is that test.
+*In plain English:* it was like a car that would not start. We replaced four broken parts and it
+still would not start, so we suspected the engine. We have now swapped the engine and the car runs,
+which confirms the engine was the main fault, and shows a second, smaller fault elsewhere in the
+car (section 8).
 
 ## 6. What was decided
 
 - **Not pursued:** pulling a further coder-tuned 7B model (`qwen2.5-coder:7b`), on the reasoning
   that an unknown gain is not worth the time; and rewording the Planner prompt (measured, made
   plans worse; REQUIREMENTS §11.8).
-- **Next test:** run the identical harness with `qwen2.5:7b-instruct`, already installed (7.9
-  tokens/s here with the GPU/CPU split), to separate "small model" from "system bug".
+- **Next test (done, section 8):** run the identical harness with `qwen2.5:7b-instruct`, already
+  installed (about 8 tokens/s here with the GPU/CPU split), to separate "small model" from "system
+  bug". It is now the default model.
 
 ## 7. Where the evidence is
 
@@ -208,6 +211,59 @@ Swapping in a bigger model is that test.
 - The detailed measurements behind this document: the appendix below (they used to live in
   REQUIREMENTS.md §11, which now describes only the harness and the optional generation controls).
 - A chronological account: [TRACKER.md](TRACKER.md) and [CHANGELOG.md](CHANGELOG.md).
+
+## 8. Epilogue: the same system on a 7B model
+
+After this record was written, the identical harness was run with `qwen2.5:7b-instruct` on Ollama
+(7.6B parameters; result file `evals/results/20260926T184340Z`; 20 runs; no constrained decoding,
+all other settings as before).
+
+| | 1.5B model (best configuration, row 7) | 7B model |
+|---|---|---|
+| Hidden acceptance test passes | 0 of 16 | **11 of 16** |
+| Orchestrator reports success | 0 of 16 | 0 of 16 |
+| Tokens per implementation run | about 2,550 | about 2,320 |
+| Median wall time | 19s | 147s |
+
+So the model was the main problem: the code it writes is correct far more often than not. But the
+system still counted **zero** successes, because it discarded correct work. Where the 16
+implementation runs ended (from the saved raw responses and step reports):
+
+| Runs | What happened |
+|---|---|
+| 7 | Correct code (the hidden test passes) and every review verdict was a rejection, so the run escalated |
+| 2 | Correct code, but the Coder's own tests failed on every attempt, so the run escalated |
+| 2 | Correct code (the hidden test passes), stopped by malformed JSON in the model's reply |
+| 3 | Stopped by malformed JSON before the code was right (the hidden test fails) |
+| 2 | Wrong code (the hidden test fails) |
+
+The malformed-JSON stops are the model getting the escaping wrong when it puts code inside a JSON
+string, in three forms seen in the saved responses: an unescaped quote ("Expecting ',' delimiter"),
+a backslash escape JSON does not allow ("Invalid \escape"), and a raw newline inside a string
+("Invalid control character"). The parser reports most of them as "no complete JSON object
+found", because a stray quote breaks its scan for a balanced object. Several of these runs also
+had earlier attempts that parsed fine. The reviews that rejected correct work
+include a one-step plan whose step matched the task exactly, and plans cut into steps that cannot
+be completed alone (for example "check if calc.py exists").
+
+**Problems in the system, not the model (none fixed yet):**
+1. The review gate rejects correct work, including work that matches a one-step plan.
+2. Plans are split into steps that cannot each be tested and completed on their own, and the
+   reviewer judges the whole task against one narrow step.
+3. Code embedded in JSON strings is fragile: the model sometimes leaves quotes, backslashes or
+   newlines unescaped, and the parser rejects the whole reply instead of repairing it. Not yet
+   tried: JSON-schema-constrained decoding (the Ollama `format` path is still unverified), or
+   sending code as fenced blocks instead of JSON strings.
+4. The Coder's own tests can be wrong even when its implementation is right.
+
+*In plain English:* with the bigger AI the answers are mostly right; the hidden answer key agreed
+in 11 of 16 tasks. But the system's own "reviewer" kept rejecting good answers, and a few answers
+were thrown away over formatting mistakes in the AI's reply, so the score the system reports is
+still zero. The problem has moved from the AI to our own review process, which is fixable.
+
+Caveats: 16 implementation runs, one pass each and non-deterministic, so read the counts as a
+pattern, not precise rates. "Every review verdict was a rejection" is read from the saved review
+responses of each run.
 
 ---
 

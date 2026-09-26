@@ -75,5 +75,7 @@ found a real pipeline bug (the Coder was never told the file name).
 The first local model (1.5B parameters on `llama-server`) did not pass the golden set; the full
 record, with plain-English explanations, is in [failed_experiment.md](failed_experiment.md). The
 agents now run on Ollama `qwen2.5:7b-instruct`, which is the default backend in settings and in
-the eval and benchmark scripts (`llama-server` stays as an optional backend); the same harness is
-being run against it.
+the eval and benchmark scripts (`llama-server` stays as an optional backend); the same harness then
+showed the hidden test passing in 11 of 16 implementation runs (0 of 16 before) while the system
+still reported no successes, because its review gate, plan granularity and JSON parsing discard
+correct work (failed_experiment.md section 8).
