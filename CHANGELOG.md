@@ -86,3 +86,9 @@ Coder had never been told the task's file name; it now is (#34). *Result:* the n
 far more often, and the score is still 0 of 16. *Learned:* an evaluation that discards its
 evidence cannot explain its own results; and fixing a real pipeline bug can be worth doing and
 still not move the headline.
+
+## After Phase 11, continued — a negative result · (docs only)
+Rewording the Planner prompt like the Coder's was measured before being written and made things
+worse (the shape line's one-step example had been anchoring plans to one step); left unchanged.
+*Learned:* the obvious next step, copied from what worked on the neighbouring component, can be
+wrong, and measuring first is what caught it. The real defect is over-splitting into micro-steps.

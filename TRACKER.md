@@ -440,3 +440,11 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   the mandatory-TDD rule (correctly) refused to count. The pipeline gap was real, not the main
   limit. Next candidates, none started: the Planner prompt still has a `"..."` shape line; a
   bigger or differently-tuned model is the only lever the evidence has not been able to rule out.
+- 2026-09-26 — Planner prompt rewording tested and **rejected** (`docs/planner-prompt-negative-result`,
+  REQUIREMENTS §11.8). Same method as the Coder (24 samples per variant on non-golden goals): words
+  only removed a harmless placeholder in `goal` (nothing reads `plan.goal`) but doubled the steps per
+  plan (2.9 -> 5.8), because the shape line's one-step example had been anchoring plans to one step.
+  Real Planner defect is over-splitting (golden run: mean 3.4 steps, up to 7). A `maxItems` cap in
+  the plan schema works on the real server (mean 2.75 -> 1.71); whether it helps success is
+  untested. No code changed; this supersedes the earlier note that the Planner prompt still needed
+  the same treatment as the Coder's.
