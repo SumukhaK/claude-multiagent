@@ -11,9 +11,15 @@ a rejection is acted on (retried), but an approval alone is never the deciding v
 verified live to rubber-stamp an explicit description/summary mismatch.
 
 Human-in-the-loop note on `clarification_node`: LangGraph re-executes a node from its start when
-resuming past an `interrupt()` call inside it. Keeping that node's only content the `interrupt()`
-call itself (no LLM call or other work before it) means resuming is cheap and side-effect-free;
-the actual re-planning work happens in `plan_node`, which the graph loops back to afterwards.
+resuming past an `interrupt()` call inside it. Nothing may therefore run *before* the
+`interrupt()` call (no LLM call, no side effect), so resuming is cheap; the one side effect
+(remembering the answer) sits after it and runs exactly once. The actual re-planning work happens
+in `plan_node`, which the graph loops back to afterwards.
+
+Memory (Phase 8): recalled memory is appended to the code context handed to the Planner, Coder
+and reviewer. Only *verified* outcomes are remembered -- an approved step (tests passed), a user
+clarification, a completed task -- never plans (unverified proposals) or failed attempts, which
+would poison future recall. Memory calls are not orchestration steps and don't spend the budget.
 """
 
 from collections.abc import Sequence
@@ -43,6 +49,11 @@ class CoderAgentProtocol(Protocol):
     def implement_step(self, step: PlanStep, code_context: str = "") -> AgentMessage: ...
 
 
+class MemoryProtocol(Protocol):
+    def recall_context(self, query: str) -> str: ...
+    def remember(self, text: str, kind: str) -> bool: ...
+
+
 class ToolAgentProtocol(Protocol):
     def commit_and_push(self, branch: str, summary: str, paths: Sequence[str]) -> AgentMessage: ...
     def open_pull_request(self, title: str, body: str, base: str = "main") -> AgentMessage: ...
@@ -54,6 +65,7 @@ def build_orchestrator_graph(
     tool_agent: ToolAgentProtocol,
     max_retries_per_step: int,
     max_orchestrator_steps: int,
+    memory: MemoryProtocol | None = None,
 ) -> StateGraph:
     """Build the (uncompiled-then-compiled) graph. The caller supplies the checkpointer at
     compile time via `.compile(checkpointer=...)` — this function does the wiring only."""
@@ -61,11 +73,22 @@ def build_orchestrator_graph(
     def over_budget(state: OrchestratorState) -> bool:
         return state["step_count"] >= max_orchestrator_steps
 
+    def context_for(state: OrchestratorState, query: str) -> str:
+        """The caller's code context plus any recalled memory relevant to `query` (already
+        size-capped and guardrail-wrapped by the memory store)."""
+        base = state.get("code_context", "")
+        recalled = memory.recall_context(query) if memory is not None else ""
+        return f"{base}\n\n{recalled}" if base and recalled else base or recalled
+
+    def remember(text: str, kind: str) -> None:
+        if memory is not None:
+            memory.remember(text, kind)
+
     def plan_node(state: OrchestratorState) -> dict:
         goal = state["goal"]
         if state.get("clarification_answer"):
             goal = f"{goal}\n\nUser clarification: {state['clarification_answer']}"
-        message = planner_agent.create_plan(goal, state.get("code_context", ""))
+        message = planner_agent.create_plan(goal, context_for(state, goal))
         step_count = state["step_count"] + 1
         if message.status == MessageStatus.OK:
             assert isinstance(message.payload, Plan)
@@ -102,13 +125,16 @@ def build_orchestrator_graph(
         return "clarification_node"
 
     def clarification_node(state: OrchestratorState) -> dict:
-        answer = interrupt({"questions": state.get("clarifying_questions") or []})
+        questions = state.get("clarifying_questions") or []
+        answer = interrupt({"questions": questions})
+        # After the interrupt, so it runs exactly once: the first execution raises at interrupt().
+        remember(f"Clarification. Questions: {'; '.join(questions)} User answered: {answer}", "clarification")
         return {"clarification_answer": answer}
 
     def implement_step_node(state: OrchestratorState) -> dict:
         assert state["plan"] is not None
         step = state["plan"].steps[state["current_step_index"]]
-        message = coder_agent.implement_step(step, state.get("code_context", ""))
+        message = coder_agent.implement_step(step, context_for(state, step.description))
         step_count = state["step_count"] + 1
         if message.status == MessageStatus.ERROR:
             return {
@@ -140,11 +166,16 @@ def build_orchestrator_graph(
 
         approved = report.tests_passed
         if report.tests_passed:
-            review_message = planner_agent.review_step(step, report, state.get("code_context", ""))
+            review_message = planner_agent.review_step(step, report, context_for(state, step.description))
             if review_message.status == MessageStatus.OK and not review_message.payload.approved:
                 approved = False
 
         if approved:
+            remember(
+                f"Step {step.step_id} ({step.description}) completed: {report.summary} "
+                f"Files: {', '.join(report.files_changed)}",
+                "step_summary",
+            )
             return {
                 "current_step_index": state["current_step_index"] + 1,
                 "step_retry_count": 0,
@@ -214,6 +245,11 @@ def build_orchestrator_graph(
         return {"status": "failed", "error": message}
 
     def done_node(state: OrchestratorState) -> dict:
+        remember(
+            f"Completed task: {state['goal']} (branch {state['branch_name']}, "
+            f"{len(state['plan'].steps)} steps)",
+            "task",
+        )
         return {"status": "done"}
 
     graph = StateGraph(OrchestratorState)

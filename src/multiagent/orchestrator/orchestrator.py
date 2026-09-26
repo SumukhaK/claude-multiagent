@@ -14,6 +14,7 @@ from langgraph.types import Command
 
 from multiagent.orchestrator.graph import (
     CoderAgentProtocol,
+    MemoryProtocol,
     PlannerAgentProtocol,
     ToolAgentProtocol,
     build_orchestrator_graph,
@@ -31,9 +32,10 @@ class Orchestrator:
         tool_agent: ToolAgentProtocol,
         max_retries_per_step: int = 2,
         max_orchestrator_steps: int = 25,
+        memory: MemoryProtocol | None = None,
     ):
         graph = build_orchestrator_graph(
-            planner_agent, coder_agent, tool_agent, max_retries_per_step, max_orchestrator_steps
+            planner_agent, coder_agent, tool_agent, max_retries_per_step, max_orchestrator_steps, memory
         )
         self._compiled = graph.compile(checkpointer=MemorySaver())
 

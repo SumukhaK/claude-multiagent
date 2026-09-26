@@ -277,3 +277,13 @@ Local mem0 (`multiagent/memory/store.py`), wrapped in a small project-scoped `Me
 - **Not installed, deliberately:** mem0's optional extras (spaCy entity extraction, fastembed
   BM25 keyword search) print warnings that they're missing. They'd add a heavy dependency for
   hybrid retrieval that plain vector search doesn't currently need.
+- **Wired into the orchestrator, verified-outcomes-only.** Recalled memory is appended to the code
+  context given to the Planner, Coder and reviewer (queried by the goal / the step description).
+  What gets remembered: an *approved* step (tests passed), the user's clarification answers, and a
+  completed task. What deliberately doesn't: plans (unverified proposals) and failed attempts —
+  remembering those would poison future recall. Known limit: an approved step is only as verified
+  as the review gate is (§8 — tests passing and an approving review don't prove the test checks
+  the right thing), so a wrong-but-passing step could still be remembered. Memory calls aren't
+  orchestration steps and don't spend the step budget. Verified live: task 1 started with empty
+  context; task 2, worded differently, received task 1's step summary and completion record.
+
