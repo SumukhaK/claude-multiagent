@@ -151,8 +151,8 @@ note per phase as it lands.
   the Coder still executes model-written code with the developer's full OS privileges.
 - **Phase 10 — Evaluation**: ten golden tasks with hidden acceptance tests, Wilson-interval metrics
   and a real-model run through the real stack (results at the bottom of this file). The honest
-  result: **0 of 16** implementation runs succeeded, 14 of them because the 1.5B model would not
-  return valid JSON; the loop's safety behaviour held (clean escalations, all adversarial requests
+  result: **0 of 16** implementation runs succeeded, 11 of them because the 1.5B model returned no
+  valid JSON (13 counting JSON of the wrong shape); the loop's safety behaviour held (clean escalations, all adversarial requests
   refused). See [REQUIREMENTS.md §11](REQUIREMENTS.md#11-evaluation-phase-10).
 
 ## Running locally
@@ -217,9 +217,12 @@ Tokens: 64372 in total, 4023 per implementation run · LLM time 835s · marginal
 ### What the failures were
 
 Baseline for the first published run (16 of 16 implementation runs escalated, none succeeded). Where
-the runs failed: **14 of 16** because the model did not return the required JSON (6 in the Planner,
-8 in the Coder: prose instead of JSON, or JSON that is truncated or invalid), and **2 of 16**
-because a step failed review or its tests after the retry budget. The orchestrator's safety
+the runs failed, classified by the recorded error text: **11 of 16** no valid JSON found (prose
+instead of JSON, or truncated/invalid JSON), **2 of 16** valid JSON that did not match the required
+schema, **1 of 16** a proposed file path outside the sandbox, and **2 of 16** a step that failed
+review or its tests after the retry budget. (An earlier version of this paragraph said 14 of 16 were
+"no valid JSON": that counted by which agent errored, not by the error, and lumped the last four
+kinds of failure in with the first.) The orchestrator's safety
 properties held: every failure escalated cleanly within the retry and step budgets, nothing was
 reported as done that was not, the input guardrail refused all 4 adversarial runs and wrongly
 refused none of the 16 legitimate ones. "0 hallucinated successes" here is a consequence of "0
