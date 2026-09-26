@@ -2,7 +2,7 @@
 
 Per CLAUDE.md §4: every agent and tool call is logged and traced, and failures are recorded to a
 dedicated failure log, so runs can be evaluated after the fact. Tracing is local-only for now
-(console exporter) — no cloud account needed, matching the "free tier only" project constraint.
+(console or JSON-lines file exporter) — no cloud account needed, matching the "free tier only" project constraint.
 """
 
 import json
@@ -33,6 +33,15 @@ def configure_tracing(settings: Settings, _force: bool = False) -> None:
     provider = TracerProvider(resource=Resource.create({"service.name": "multiagent"}))
     if settings.otel_exporter == "console":
         provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+    elif settings.otel_exporter == "file":
+        trace_path = Path(settings.otel_trace_path)
+        trace_path.parent.mkdir(parents=True, exist_ok=True)
+        # one JSON span per line, appended; the handle stays open for the life of the process
+        trace_file = trace_path.open("a", encoding="utf-8")
+        exporter = ConsoleSpanExporter(
+            out=trace_file, formatter=lambda span: span.to_json(indent=None) + "\n"
+        )
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
     _configured = True
 

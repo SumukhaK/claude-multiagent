@@ -56,18 +56,21 @@ flowchart TB
     OTEL["OpenTelemetry tracing + failure log"]
     CTX["ContextManager<br/>token budget + compaction"]
     O --- MEM
-    O -.- OTEL
+    O --- OTEL
     O -.- CTX
 
     classDef notwired stroke:#c00,stroke-dasharray: 5 5
-    class OTEL,CTX notwired
+    class CTX notwired
 ```
 
-Solid boxes are wired into the running system. **Red dashed boxes are built and unit-tested but
-not yet connected to it** — tracing and context budgeting exist as modules, but nothing calls
-them (verified by searching the code; see
+Solid boxes are wired into the running system. **The red dashed box is built and unit-tested but
+not yet connected to it** — context budgeting exists as a module, but nothing calls it (verified by
+searching the code; see
 [REQUIREMENTS.md §12](REQUIREMENTS.md#12-wiring-audit-what-is-built-versus-what-runs)). Memory is
-wired as an optional injection but no entrypoint or evaluation run enables it.
+wired as an optional injection but no entrypoint or evaluation run enables it. Tracing is wired
+into the stack the evaluation builds (`build_real_system`): every LLM, agent and git call is a span
+under one root span per run, written as JSON lines to `logs/traces.jsonl`, with failures in
+`logs/failures.jsonl`. There is still no other entrypoint to attach it to.
 
 **Design principles:** least-privilege tool access per agent, structured JSON contracts between
 agents (never free text), tool output is always treated as data (never as instructions), bounded

@@ -410,3 +410,9 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   file empty of tests. Also found while comparing: the baseline failure breakdown had been counted by
   agent instead of by error text (fixed in PR #27). Flag stays off. Next: prompt improvements, then
   tracing wiring.
+- 2026-09-26 — Tracing wired on `feat/wire-tracing` (the second item from the Phase 11 wiring
+  audit). Traced wrappers for LLM/agent/tool calls, a per-run root span in the orchestrator, a JSON-
+  lines file exporter and a failure log, wired into `build_real_system` and the evaluation script.
+  Error-status agent messages and unsuccessful tool results count as failures (agents return errors
+  rather than raising); prompts, responses and raw tool output are never recorded. Verified end to
+  end with the real exporter. There is still no user-facing entrypoint to attach it to.

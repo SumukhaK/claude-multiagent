@@ -505,7 +505,7 @@ design documents). Result:
 | Memory (`MemoryStore`) | yes | only as an optional injection — no entrypoint and no evaluation run enables it (verified once, by hand, across two tasks) |
 | Hardware test runner | yes | `ToolAgent.run_hardware_tests` exists, but the orchestrator never calls it |
 | Metering and the evaluation harness | yes | evaluation runs only |
-| **OpenTelemetry tracing and the failure log** (`traced_call`, `FailureLog`, `configure_tracing`) | yes | **no — nothing calls them** |
+| OpenTelemetry tracing and the failure log (`TracedLLMClient`, `TracedAgent`, `TracedTools`, `FailureLog`, `configure_tracing`) | yes | yes for the stack the evaluation builds (`build_real_system`, `scripts/run_eval.py`); there is no other entrypoint to wire it into |
 | **Context budgeting** (`ContextManager.maybe_compact`, the budget helpers) | yes | **no — nothing calls them** |
 | **A user-facing entrypoint** | — | **none exists**: only benchmark, verification and evaluation scripts |
 | LangSmith / OpenEval | not built | not used (LangSmith is only present as a disabled LangGraph dependency) |
@@ -513,9 +513,9 @@ design documents). Result:
 Consequences, stated plainly:
 
 - CLAUDE.md §4 requires that every agent and tool call is logged and traced, and that context is a
-  budgeted resource that is compacted before overflow. **Neither is true of the running system.**
-  The modules exist and are unit-tested; nothing connects them. A run leaves no trace and no
-  failure log.
+  budgeted resource that is compacted before overflow. **Tracing is now true** of the stack the
+  evaluation builds (see §12.1); **context budgeting still is not**: the module exists and is
+  unit-tested, and nothing connects it.
 - Context is not enforced *anywhere*. The agents are stateless single-shot prompts, so there is no
   history for `ContextManager` to compact — but nothing checks that a prompt (code context, recalled
   memory, the step) plus the response reserve fits the ~4096-token slot either. An oversized
@@ -524,8 +524,7 @@ Consequences, stated plainly:
   provides the loop, but there is no way to run it other than through Python or the scripts.
 
 What would close these (not scheduled; ordered by how cheaply they'd close a stated requirement):
-1. **Tracing:** a tracing proxy around the agents, as `MeteredAgent` already does for evaluation,
-   plus configuring the exporter and failure log at startup.
+1. ~~**Tracing**~~ *done, see §12.1.*
 2. **Prompt budget:** measure the composed prompt before each LLM call and shrink the code context
    to fit, using the existing budget helpers.
 3. **An entrypoint:** a small CLI that builds the real stack, asks clarifying questions on the
@@ -553,3 +552,23 @@ necessary but not sufficient; the content is now the bottleneck, so the next exp
 prompt (relative-path and concrete-test examples). The flag stays off by default: it makes failure
 cheaper, not success likelier, and the reasoning block it removes may matter once the content
 improves.
+
+### 12.1 Tracing, wired (enhancement after the audit)
+
+`multiagent/observability/wrappers.py` adds `TracedLLMClient`, `TracedAgent` and `TracedTools`, which
+wrap the injected objects exactly as the metering wrappers do (no agent code changed).
+`Orchestrator.run`/`resume` open one root span per call, so every span a task causes shares one
+trace. `configure_tracing` gained a `file` exporter (JSON lines, `OTEL_TRACE_PATH`, now the
+default); failures go to `FAILURE_LOG_PATH`. Design decisions:
+
+- **A returned error is a failure.** Agents report failure by returning `status="error"`, not by
+  raising, so the wrappers mark the span ERROR and write the failure log for error-status messages
+  and unsuccessful tool results, not just for exceptions. A clarification request is not a failure,
+  and a run that finishes `failed` marks its root span ERROR.
+- **No prompts, responses or raw tool output are recorded**, only names, sizes, token counts,
+  statuses and error text: prompts carry the user's code and may carry secrets. Tool failures are
+  logged by return code and timeout flag only.
+- **Verified end to end** with the real exporter and scripted models: one trace per run, correct
+  parent/child nesting (LLM span inside agent span inside run), no prompt text in the output files.
+- **Where it applies:** `build_real_system` and therefore `scripts/run_eval.py`. The project has no
+  user-facing entrypoint yet (§12), so there is nowhere else to attach it.

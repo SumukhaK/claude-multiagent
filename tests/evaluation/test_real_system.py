@@ -111,3 +111,33 @@ def test_constrain_json_sends_a_schema_to_the_planner_and_never_to_the_tool_agen
 
     assert seen["planner"] and all(schema is not None for schema in seen["planner"])
     assert all(schema is None for schema in seen["tool"])
+
+
+def test_with_a_tracer_every_layer_of_a_real_run_is_traced_and_failures_are_logged(tmp_path):
+    import json
+
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from multiagent.observability.tracing import FailureLog
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    failure_path = tmp_path / "failures.jsonl"
+
+    def build(sandbox, meter):
+        return build_real_system(
+            planner_llm=FakeLLM("no json here"), coder_llm=FakeLLM("no json here"), tool_llm=FakeLLM("x"),
+            sandbox=sandbox, meter=meter, max_retries=1, max_steps=6, max_tokens=64,
+            tracer=provider.get_tracer("test"), failure_log=FailureLog(failure_path),
+        )
+
+    run_task(TASKS["feature_add"], 0, build, tmp_path / "work")
+
+    names = {span.name for span in exporter.get_finished_spans()}
+    assert {"orchestrator.run", "agent.planner.create_plan", "llm.planner.generate"} <= names
+    failures = [json.loads(line) for line in failure_path.read_text().splitlines()]
+    assert any(f["call"] == "agent.planner.create_plan" for f in failures)
+    assert any("no complete JSON object" in f["error"] for f in failures)

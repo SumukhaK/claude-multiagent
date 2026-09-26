@@ -55,11 +55,13 @@ The honest result of the first real test: **the system did not complete any of t
 tasks it was given** (0 of 16). The workers' *process* held up: every failure was reported cleanly
 rather than hidden or faked, and every request for something harmful was refused. The problem is
 the small AI model, which usually answers in ordinary sentences when the system needs a strictly
-formatted reply, so the next worker never receives instructions it can read. Making the model
-answer in the required format is the next thing being tried, and the same test will show whether
-it helps. Two parts (detailed activity tracing and the "context budget" tracker) are built but not
-yet switched on, and there is no simple command-line front door yet; the project's technical notes
-list exactly what is and is not connected.
+formatted reply, so the next worker never receives instructions it can read. Forcing
+the model to answer in the required format was tried: the format problem disappeared, but the
+tasks still were not completed because the content of the answers was poor. Clearer instructions
+in the prompts are being measured next. A detailed activity log (a timeline of every step each
+worker took, and every failure) now exists for test runs. The "context budget" tracker is built but
+not yet switched on, and there is no simple command-line front door yet; the project's technical
+notes list exactly what is and is not connected.
 
 ## Who this is for
 

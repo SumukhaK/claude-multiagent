@@ -42,7 +42,9 @@ class Settings(BaseSettings):
     # Observability
     log_level: str = "INFO"
     otel_enabled: bool = True
-    otel_exporter: str = "console"
+    otel_exporter: str = "file"  # "file" (JSON lines at otel_trace_path), "console", or anything else for none
+    otel_trace_path: str = "logs/traces.jsonl"
+    failure_log_path: str = "logs/failures.jsonl"
 
     # Optional evaluation (off by default; free tier only, needs the user's own keys)
     langsmith_enabled: bool = False

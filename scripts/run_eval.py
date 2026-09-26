@@ -24,6 +24,7 @@ from multiagent.evaluation.runner import RunResult, run_suite
 from multiagent.llm.llama_client import LlamaServerClient
 from multiagent.llm.llama_server import LlamaServerProcess
 from multiagent.llm.ollama_client import OllamaClient
+from multiagent.observability.tracing import FailureLog, configure_tracing, get_tracer
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -45,6 +46,7 @@ def main() -> None:
 
     tasks = [t for t in GOLDEN_TASKS if not args.tasks or t.id in args.tasks]
     settings = get_settings()
+    configure_tracing(settings)  # spans to OTEL_TRACE_PATH, failures to FAILURE_LOG_PATH
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out_dir = ROOT / "evals" / "results"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -81,6 +83,8 @@ def main() -> None:
             max_retries=settings.max_retries_per_step,
             max_steps=args.max_steps,
             max_tokens=args.max_tokens,
+            tracer=get_tracer(),
+            failure_log=FailureLog(Path(settings.failure_log_path)),
             constrain_json=(
                 settings.llama_constrain_json if args.constrain_json is None else args.constrain_json
             ),
@@ -107,11 +111,11 @@ def main() -> None:
         print("README.md updated.")
 
 
-def _build(sandbox, meter, *, llama, ollama, max_retries, max_steps, max_tokens, constrain_json):
+def _build(sandbox, meter, *, llama, ollama, max_retries, max_steps, max_tokens, constrain_json, tracer, failure_log):
     return build_real_system(
         planner_llm=llama, coder_llm=llama, tool_llm=ollama, sandbox=sandbox, meter=meter,
         max_retries=max_retries, max_steps=max_steps, max_tokens=max_tokens,
-        constrain_json=constrain_json,
+        constrain_json=constrain_json, tracer=tracer, failure_log=failure_log,
     )
 
 
