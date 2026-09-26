@@ -80,14 +80,28 @@ def test_create_plan_returns_error_when_the_response_cannot_be_parsed():
 def test_create_plan_strips_a_think_block_from_a_reasoning_model_before_parsing():
     llm = FakeLLMClient(
         text="<think>the user wants a health endpoint</think>"
-        '{"kind": "plan", "goal": "add health endpoint", "steps": [], "clarifying_questions": []}'
+        '{"kind": "plan", "goal": "add health endpoint", "steps": [], '
+        '"clarifying_questions": ["which framework?"]}'
     )
     agent = PlannerAgent(llm_client=llm, task_id="task-1")
 
     message = agent.create_plan(goal="add health endpoint")
 
-    # empty steps and no clarifying_questions is unusual but not invalid - still reported as ok
-    assert message.status == MessageStatus.OK
+    assert message.status == MessageStatus.NEEDS_CLARIFICATION
+    assert message.payload.clarifying_questions == ["which framework?"]
+
+
+def test_create_plan_returns_error_for_an_empty_plan_with_no_questions():
+    """No steps and no clarifying questions is a degenerate response - report it as an error
+    rather than silently treating it as a completed (but empty) plan."""
+    llm = FakeLLMClient(text='{"kind": "plan", "goal": "fix it", "steps": [], "clarifying_questions": []}')
+    agent = PlannerAgent(llm_client=llm, task_id="task-1")
+
+    message = agent.create_plan(goal="fix it")
+
+    assert message.status == MessageStatus.ERROR
+    assert message.error is not None
+    assert message.payload is None
 
 
 def test_create_plan_includes_code_context_in_the_prompt_when_given():

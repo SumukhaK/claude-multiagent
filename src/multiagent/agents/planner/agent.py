@@ -62,6 +62,11 @@ class PlannerAgent:
         elif plan.clarifying_questions:
             status = MessageStatus.NEEDS_CLARIFICATION
         else:
-            status = MessageStatus.OK
+            return AgentMessage(
+                agent=AgentName.PLANNER,
+                task_id=self._task_id,
+                status=MessageStatus.ERROR,
+                error="planner returned an empty plan with no steps and no clarifying questions",
+            )
 
         return AgentMessage(agent=AgentName.PLANNER, task_id=self._task_id, status=status, payload=plan)
