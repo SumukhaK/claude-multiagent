@@ -142,7 +142,7 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 | 2 | Shared infra: pydantic JSON schemas for inter-agent messages, OpenTelemetry logging/tracing wrapper, guardrail input filter, config loader — all unit-tested with a stubbed LLM client | ✅ |
 | 3 | Context engineering: per-agent `ContextManager` (token budget, tool-history eviction, summarization compaction), hardware-derived budget helpers for the llama-server and Ollama backends, Ollama client now sets `num_ctx` explicitly | ✅ |
 | 4 | Planning agent: read-only filesystem tools, clarification-question flow, plan schema + validator, prompt template | ✅ |
-| 5 | Coding agent: TDD-enforcing workflow, sandboxed file write/edit tool, sandboxed pytest execution tool, mandatory step-review gate | 🔶 |
+| 5 | Coding agent: TDD-enforcing workflow, sandboxed file write/edit tool, sandboxed pytest execution tool, mandatory step-review gate | ✅ |
 | 6 | Tool agent: git/gh wrapper tools (branch/commit/push/PR), allowlisted commands only, hardware/emulator test runner (best-effort/stretch), retry + timeout + circuit-breaker logic | ⬜ |
 | 7 | Orchestrator: LangGraph state machine wiring all three agents, human-in-the-loop clarification interrupt, retry/escalation policy, hard step-budget circuit breaker, end-to-end test | ⬜ |
 | 8 | Memory layer: local mem0 (local embeddings via `nomic-embed-text`, local vector store), wired into Planner + Coder | ⬜ |
@@ -233,3 +233,21 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   structured `TestRunResult(timed_out=True)` instead of raising or hanging. 6 new tests
   (two run pytest as a real subprocess against a tmp project; the rest mock `subprocess.run`
   for the timeout/validation/argv-shape cases). 118 passing overall.
+- 2026-09-26 — Third and final Phase 5 component landed on `feat/coder-agent-core`: extracted the
+  shared reasoning-stripping/JSON-extraction primitives out of the Planner's parser (Phase 4)
+  into `multiagent/agents/response_parsing.py`, so the Coder doesn't duplicate that
+  security/correctness-sensitive logic — refactored with zero regressions (all of Phase 4's
+  behavioral tests still pass unchanged). Added `CodeChangeProposal`/`ProposedFile`
+  (deliberately *not* part of the inter-agent contract — see REQUIREMENTS.md §8's sibling note
+  in the code — it never leaves the Coding agent), a matching response parser with TDD enforced
+  at the schema level (a proposal with no test files fails validation), a coder prompt template,
+  and `CoderAgent.implement_step()` composing an LLM, `WritableFilesystem`, and
+  `SandboxedPytestRunner` into one call. A failing test run reports status "ok" with
+  `tests_passed=False` (useful data for a retry policy, not a system error) and files are never
+  rolled back on failure, matching how a human iterates; status "error" is reserved for actual
+  execution failures, with every proposed path validated *before* any file is written
+  (all-or-nothing). Live-verified twice against the real model, which surfaced two honest
+  findings recorded in REQUIREMENTS.md §8: schema-valid JSON doesn't guarantee correct test
+  content, and — reassuringly — the sandbox validation correctly caught and blocked a real,
+  unpredictable (accidental, not malicious) absolute-path proposal from the model itself before
+  writing anything. 27 net new tests, 145 tests passing overall. **Phase 5 complete.**

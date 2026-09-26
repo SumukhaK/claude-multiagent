@@ -189,3 +189,19 @@ with tool output in it, so compaction is load-bearing, not optional headroom.
   but is deliberately left as a follow-up rather than iterated on ad hoc here.
 - **This is exactly what Phase 10's evaluation harness exists to measure systematically** (plan
   success rate, hallucination rate) instead of relying on a handful of manual runs like this one.
+- **The Coder shows the same pattern, one level deeper: schema-valid JSON doesn't mean correct
+  content.** Live-verified (Phase 5): the model did produce a parseable `CodeChangeProposal` for
+  a simple "add a function" step, but the proposed test asserted against an unrelated
+  pre-existing function instead of the one it was asked to implement — a test that wouldn't
+  actually verify the requested change even though it's well-formed JSON. The implementation
+  file it proposed alongside it, by contrast, was correct. `parse_code_change_response` did its
+  job (the JSON was genuinely valid), but correctness of the *content* is a separate, harder
+  problem this parser was never meant to solve, and Phase 10 is where it gets measured rather
+  than assumed.
+- **The sandbox validation was verified against real, unpredictable model output, not just
+  contrived test cases — and it worked.** In a separate live run, the model proposed a path like
+  `/python/calc.py` (an accidental absolute-looking path, not malicious). `CoderAgent` rejected
+  it before writing anything and reported a clear error, exactly as the all-or-nothing
+  pre-validation in Phase 5 was designed to do. This is the kind of thing worth confirming
+  against the real, messy model rather than trusting the synthetic escape attempts in unit tests
+  alone.
