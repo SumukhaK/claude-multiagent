@@ -131,7 +131,7 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 |---|---|---|
 | 0 | Project scaffolding: CLAUDE.md, README/REQUIREMENTS/NON_TECHNICAL/TRACKER docs, `config/settings.py`, `.env.example`, `pyproject.toml`, first test, GitHub repo created & pushed | ✅ |
 | 1 | Local model serving: tuned `llama-server` launch config (GPU offload, flash-attn, quantized KV cache, continuous batching), Ollama CPU-only helper for the tool model, a thin LLM client wrapper, smoke-test + micro-benchmark (tok/s, latency, VRAM) | ✅ |
-| 2 | Shared infra: pydantic JSON schemas for inter-agent messages, OpenTelemetry logging/tracing wrapper, guardrail input filter, config loader — all unit-tested with a stubbed LLM client | ⬜ |
+| 2 | Shared infra: pydantic JSON schemas for inter-agent messages, OpenTelemetry logging/tracing wrapper, guardrail input filter, config loader — all unit-tested with a stubbed LLM client | 🔶 |
 | 3 | Planning agent: read-only filesystem tools, clarification-question flow, plan schema + validator, prompt template | ⬜ |
 | 4 | Coding agent: TDD-enforcing workflow, sandboxed file write/edit tool, sandboxed pytest execution tool, mandatory step-review gate | ⬜ |
 | 5 | Tool agent: git/gh wrapper tools (branch/commit/push/PR), allowlisted commands only, hardware/emulator test runner (best-effort/stretch), retry + timeout + circuit-breaker logic | ⬜ |
@@ -161,3 +161,8 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   latency trade-off are recorded in
   [REQUIREMENTS.md §3](REQUIREMENTS.md#3-hardware--local-inference-design). New dependency:
   `httpx` (lightweight, easy to mock in tests, needed for both HTTP clients).
+- 2026-09-26 — Phase 2 started, split into individual branches/PRs per component (policy update:
+  see CLAUDE.md §7). First component landed on `feat/agent-message-schemas`: `AgentMessage`
+  envelope + `Plan`/`CodeChangeReport`/`ToolExecutionReport` discriminated-union payloads, with a
+  validator enforcing the `error` field is set if-and-only-if `status == "error"`. 11 new tests,
+  all passing.
