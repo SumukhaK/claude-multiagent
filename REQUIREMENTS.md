@@ -554,8 +554,8 @@ not a leaderboard. What the map shows:
 1. **Constrained decoding removes the format failure** (11 -> 0 no-JSON) and makes failure
    cheaper: about 3.3x fewer tokens and about 9x faster wall time. (An earlier note said "9x fewer
    tokens": wrong, corrected.) It does not make the content right.
-2. **A worked example is harmful** for this model: copied in 17 of 24 non-golden samples, and every
-   test file in row 3 contained no test. Removed.
+2. **A worked example is harmful** for this model: copied in 17 of 24 non-golden samples, and in
+   every one of the 16 runs of row 3 at least one proposed test file contained no test. Removed.
 3. **A `"..."` in the shape line gets copied.** With constrained decoding any string is valid, so
    the model returned `"..."` as file bodies. Describing the format in words fixed that, but only
    **together with the chat template** (11.5), and only **when constrained**: row 6 shows the
