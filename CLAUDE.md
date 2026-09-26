@@ -164,6 +164,7 @@ README.md            # architecture, brief description, tools/libs, metrics (gro
 REQUIREMENTS.md       # technical requirements & design decisions
 NON_TECHNICAL.md      # plain-English explanation of the project
 TRACKER.md            # phase-by-phase plan + status, original prompt on record
+failed_experiment.md  # what went wrong with the 1.5B local model, with plain-English explanations
 config/               # single source of truth for settings (pydantic-settings)
 src/multiagent/       # orchestrator, agents, llm clients, memory, observability, guardrails
 tests/                # mirrors src/multiagent structure
