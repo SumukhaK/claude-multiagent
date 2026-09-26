@@ -130,7 +130,7 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Project scaffolding: CLAUDE.md, README/REQUIREMENTS/NON_TECHNICAL/TRACKER docs, `config/settings.py`, `.env.example`, `pyproject.toml`, first test, GitHub repo created & pushed | ✅ |
-| 1 | Local model serving: tuned `llama-server` launch config (GPU offload, flash-attn, quantized KV cache, continuous batching), Ollama CPU-only helper for the tool model, a thin LLM client wrapper, smoke-test + micro-benchmark (tok/s, latency, VRAM) | ⬜ |
+| 1 | Local model serving: tuned `llama-server` launch config (GPU offload, flash-attn, quantized KV cache, continuous batching), Ollama CPU-only helper for the tool model, a thin LLM client wrapper, smoke-test + micro-benchmark (tok/s, latency, VRAM) | ✅ |
 | 2 | Shared infra: pydantic JSON schemas for inter-agent messages, OpenTelemetry logging/tracing wrapper, guardrail input filter, config loader — all unit-tested with a stubbed LLM client | ⬜ |
 | 3 | Planning agent: read-only filesystem tools, clarification-question flow, plan schema + validator, prompt template | ⬜ |
 | 4 | Coding agent: TDD-enforcing workflow, sandboxed file write/edit tool, sandboxed pytest execution tool, mandatory step-review gate | ⬜ |
@@ -152,3 +152,12 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 **Note on Phase 0's commit:** it landed directly on `main` rather than via a branch+PR, because a
 PR needs an existing base branch to merge into, and this commit *is* what created that base
 branch. Every phase from here on gets its own branch, PR, self-review, and merge.
+
+- 2026-09-26 — Phase 1 done on branch `feat/phase-1-local-model-serving`: `llama_server.py`
+  (launch command + subprocess lifecycle + health check), `llama_client.py` and `ollama_client.py`
+  (HTTP clients behind a shared `LLMResponse`/`LLMClient` shape), 20 new unit tests (all mocked —
+  no GPU/binary needed to run the suite), plus `scripts/benchmark_llm.py` for manual hardware
+  verification. Ran the benchmark for real on this laptop — results and the CPU-tool-agent
+  latency trade-off are recorded in
+  [REQUIREMENTS.md §3](REQUIREMENTS.md#3-hardware--local-inference-design). New dependency:
+  `httpx` (lightweight, easy to mock in tests, needed for both HTTP clients).

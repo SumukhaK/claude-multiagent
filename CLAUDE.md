@@ -147,6 +147,7 @@ TRACKER.md            # phase-by-phase plan + status, original prompt on record
 config/               # single source of truth for settings (pydantic-settings)
 src/multiagent/       # orchestrator, agents, llm clients, memory, observability, guardrails
 tests/                # mirrors src/multiagent structure
+scripts/               # manual hardware verification scripts (not pytest — real GPU/binary needed)
 .env.example          # documented, safe placeholders only
 ```
 
