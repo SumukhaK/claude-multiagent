@@ -4,6 +4,9 @@ Per CLAUDE.md §4: the Planning agent gets read-only access, confined to the pro
 write, never execute, never able to escape the sandbox via path traversal.
 """
 
+import os
+import sys
+
 import pytest
 
 from multiagent.tools.filesystem import ReadOnlyFilesystem, SandboxViolationError
@@ -111,3 +114,64 @@ def test_resolve_within_sandbox_blocks_traversal_without_touching_the_filesystem
 
     with pytest.raises(SandboxViolationError):
         fs.resolve_within_sandbox("../README.md")
+
+
+@pytest.fixture
+def secrets_project(tmp_path):
+    (tmp_path / ".env").write_text("API_KEY=hunter2\n", encoding="utf-8")
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "config").write_text("[core]\n", encoding="utf-8")
+    (tmp_path / "app.py").write_text("SECRET = 'not really'\n", encoding="utf-8")
+    return tmp_path
+
+
+def _symlink_or_skip(target, link):
+    try:
+        os.symlink(target, link)
+    except OSError:
+        pytest.skip("creating symlinks needs elevated privileges on this machine")
+
+
+@pytest.mark.parametrize("spelling", [".env", ".ENV", ".env.", ".env ", "sub/../.env", "./.env"])
+def test_read_file_refuses_the_projects_env_file_under_every_spelling(secrets_project, spelling):
+    (secrets_project / "sub").mkdir(exist_ok=True)
+
+    with pytest.raises(SandboxViolationError):
+        ReadOnlyFilesystem(secrets_project).read_file(spelling)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="NTFS alternate data streams are Windows-only")
+def test_read_file_refuses_an_ntfs_alternate_data_stream_of_the_env_file(secrets_project):
+    with pytest.raises(SandboxViolationError):
+        ReadOnlyFilesystem(secrets_project).read_file(".env::$DATA")
+
+
+def test_read_file_refuses_a_symlink_that_points_at_a_protected_file(secrets_project):
+    _symlink_or_skip(secrets_project / ".env", secrets_project / "innocent.txt")
+
+    with pytest.raises(SandboxViolationError):
+        ReadOnlyFilesystem(secrets_project).read_file("innocent.txt")
+
+
+def test_read_file_refuses_git_internals(secrets_project):
+    with pytest.raises(SandboxViolationError):
+        ReadOnlyFilesystem(secrets_project).read_file(".git/config")
+
+
+def test_a_path_with_a_null_byte_is_a_sandbox_violation_not_a_crash(secrets_project):
+    with pytest.raises(SandboxViolationError):
+        ReadOnlyFilesystem(secrets_project).read_file("app.py\x00.txt")
+
+
+def test_list_files_hides_protected_files(secrets_project):
+    assert ReadOnlyFilesystem(secrets_project).list_files() == ["app.py"]
+
+
+def test_search_text_never_returns_lines_from_protected_files(secrets_project):
+    assert ReadOnlyFilesystem(secrets_project).search_text("hunter2", pattern="**/*") == []
+
+
+def test_search_text_survives_a_symlink_to_a_protected_file(secrets_project):
+    _symlink_or_skip(secrets_project / ".env", secrets_project / "innocent.txt")
+
+    assert ReadOnlyFilesystem(secrets_project).search_text("hunter2", pattern="**/*") == []

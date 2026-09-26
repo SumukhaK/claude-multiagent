@@ -287,3 +287,31 @@ Local mem0 (`multiagent/memory/store.py`), wrapped in a small project-scoped `Me
   orchestration steps and don't spend the step budget. Verified live: task 1 started with empty
   context; task 2, worded differently, received task 1's step summary and completion record.
 
+
+## 10. Security hardening (Phase 9)
+
+Phase 9 began as an audit of what is actually true rather than what the design docs say. Findings
+and fixes, each verified against the real system, are recorded here as they land.
+
+- **Protected paths (`multiagent/tools/path_policy.py`).** The sandbox root only stopped an agent
+  *escaping* the project; the Planner could freely read the project's own `.env`. Probed live on
+  Windows before designing the fix: `.env`, `.ENV`, `.env.`, `.env ` (trailing dot/space),
+  `.env::$DATA` (NTFS stream), `sub/../.env` and a symlink all read the secrets file. The policy
+  is therefore checked on the *resolved* path (which canonicalises all of those), and each part
+  is additionally normalised (case, trailing dots/spaces, `:stream`) for write targets that don't
+  exist yet and so aren't canonicalised by the OS. Protected: `.env*` (not `.env.example`),
+  `.git/`, `.ssh/`, `.aws/`, `.gnupg/`, `.memory/` (the private memory store), key/cert files,
+  `.netrc`/`.pypirc`/`.npmrc`. Writes are stricter: `.git/` hooks and `.github/` workflows are
+  code that runs with real privileges, so they're write-protected (reading a workflow is fine).
+  Applies to read, list, search, write, delete and pytest targets through the one shared
+  `_resolve`; `list_files`/`search_text` skip protected files and dangling/escaping symlinks
+  instead of crashing or leaking.
+- **Writes are bounded and all-or-nothing under the *write* policy.** `CoderAgent` pre-validated
+  proposed paths with the *read* policy, so a proposal targeting `.git/hooks/pre-commit` would
+  have passed pre-validation and failed mid-batch — a partial write plus an uncaught exception.
+  It now pre-validates every file with `validate_write` (policy + a 200 KB size cap) before
+  writing any, and reports an `OSError` during writing as a structured error rather than
+  crashing the orchestrator.
+- **An embedded NUL byte was not rejected by `resolve()` on this platform** (found by a failing
+  test), so a write containing one would have crashed with an uncaught `ValueError`; it's now an
+  explicit sandbox violation.

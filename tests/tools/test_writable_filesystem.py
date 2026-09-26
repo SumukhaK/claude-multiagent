@@ -83,3 +83,54 @@ def test_delete_file_blocks_sandbox_escape(project, tmp_path_factory):
         fs.delete_file(str(outside_file))
 
     assert outside_file.exists()
+
+
+@pytest.mark.parametrize(
+    "path",
+    [".env", ".ENV.", ".git/hooks/pre-commit", ".git/config", ".github/workflows/ci.yml", "keys/server.pem"],
+)
+def test_write_file_refuses_protected_paths_and_writes_nothing(project, path):
+    with pytest.raises(SandboxViolationError):
+        WritableFilesystem(project).write_file(path, "malicious\n")
+
+    assert not (project / path.rstrip(". ")).exists()
+
+
+def test_write_file_refuses_oversized_content(project):
+    with pytest.raises(SandboxViolationError):
+        WritableFilesystem(project, max_write_bytes=100).write_file("src/big.py", "x" * 101)
+
+    assert not (project / "src" / "big.py").exists()
+
+
+def test_write_file_accepts_content_at_the_size_limit(project):
+    WritableFilesystem(project, max_write_bytes=100).write_file("src/ok.py", "x" * 100)
+
+    assert (project / "src" / "ok.py").exists()
+
+
+def test_validate_write_checks_policy_and_size_without_touching_the_filesystem(project):
+    fs = WritableFilesystem(project, max_write_bytes=10)
+
+    fs.validate_write("src/new.py", "ok")
+    assert not (project / "src" / "new.py").exists()
+    with pytest.raises(SandboxViolationError):
+        fs.validate_write(".git/hooks/pre-commit", "ok")
+    with pytest.raises(SandboxViolationError):
+        fs.validate_write("src/new.py", "x" * 11)
+
+
+def test_delete_file_refuses_protected_paths(project):
+    (project / ".env").write_text("A=1", encoding="utf-8")
+
+    with pytest.raises(SandboxViolationError):
+        WritableFilesystem(project).delete_file(".env")
+
+    assert (project / ".env").exists()
+
+
+def test_reading_ci_config_is_allowed_even_though_writing_it_is_not(project):
+    (project / ".github").mkdir()
+    (project / ".github" / "ci.yml").write_text("name: ci", encoding="utf-8")
+
+    assert WritableFilesystem(project).read_file(".github/ci.yml") == "name: ci"

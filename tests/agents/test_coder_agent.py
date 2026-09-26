@@ -158,3 +158,61 @@ def test_coder_agent_rejects_a_non_positive_max_tokens_at_construction(tmp_path,
             task_id="task-1",
             max_tokens=bad_max_tokens,
         )
+
+
+def _two_file_proposal(second_path: str, second_content: str = "x = 1\n") -> str:
+    return json.dumps(
+        {
+            "kind": "code_change",
+            "step_id": 1,
+            "test_files": [{"path": "test_ok.py", "content": "def test_ok():\n    assert True\n"}],
+            "implementation_files": [{"path": second_path, "content": second_content}],
+            "summary": "policy check",
+        }
+    )
+
+
+@pytest.mark.parametrize("bad_path", [".git/hooks/pre-commit", ".env", ".github/workflows/ci.yml"])
+def test_implement_step_rejects_protected_paths_without_writing_any_file(tmp_path, agent_factory, bad_path):
+    """A git hook or CI workflow is code that runs with real privileges; the valid test file
+    proposed alongside it must not be written either (all-or-nothing)."""
+    agent = agent_factory(FakeLLMClient(text=_two_file_proposal(bad_path)))
+
+    message = agent.implement_step(PlanStep(step_id=1, description="add x"))
+
+    assert message.status == MessageStatus.ERROR
+    assert "policy" in message.error.lower()
+    assert not (tmp_path / "test_ok.py").exists()
+    assert not (tmp_path / bad_path).exists()
+
+
+def test_implement_step_rejects_oversized_content_without_writing_any_file(tmp_path):
+    agent = CoderAgent(
+        llm_client=FakeLLMClient(text=_two_file_proposal("big.py", "x" * 500)),
+        filesystem=WritableFilesystem(tmp_path, max_write_bytes=200),
+        test_runner=SandboxedPytestRunner(tmp_path),
+        task_id="task-1",
+    )
+
+    message = agent.implement_step(PlanStep(step_id=1, description="add x"))
+
+    assert message.status == MessageStatus.ERROR
+    assert not (tmp_path / "test_ok.py").exists()
+
+
+def test_implement_step_reports_an_os_error_during_writing_instead_of_crashing(tmp_path):
+    class FailingFilesystem(WritableFilesystem):
+        def write_file(self, relative_path, content):
+            raise OSError("disk full")
+
+    agent = CoderAgent(
+        llm_client=FakeLLMClient(text=_two_file_proposal("calc.py")),
+        filesystem=FailingFilesystem(tmp_path),
+        test_runner=SandboxedPytestRunner(tmp_path),
+        task_id="task-1",
+    )
+
+    message = agent.implement_step(PlanStep(step_id=1, description="add x"))
+
+    assert message.status == MessageStatus.ERROR
+    assert "disk full" in message.error
