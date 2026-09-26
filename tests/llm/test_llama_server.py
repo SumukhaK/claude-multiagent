@@ -180,3 +180,57 @@ def test_stop_terminates_a_running_process(settings, monkeypatch):
 def test_stop_is_a_no_op_when_never_started(settings):
     process = LlamaServerProcess(settings)
     process.stop()  # must not raise
+
+
+def test_start_sends_server_output_to_a_log_file_not_an_unread_pipe(settings, tmp_path, monkeypatch):
+    """An unread stdout=PIPE fills its OS buffer after enough request logging and then blocks the
+    server on its next log write, silently freezing every completion (found in a real eval run)."""
+    log_path = tmp_path / "logs" / "llama-server.log"
+    settings = settings.model_copy(update={"llama_log_path": str(log_path)})
+    captured = {}
+
+    def fake_popen(command, **kwargs):
+        captured.update(kwargs)
+
+        class FakeProcess:
+            def poll(self_inner):
+                return None
+
+        return FakeProcess()
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    LlamaServerProcess(settings).start()
+
+    assert captured["stdout"] is not subprocess.PIPE
+    assert captured["stderr"] == subprocess.STDOUT
+    captured["stdout"].write("a log line\n")
+    captured["stdout"].flush()
+    assert log_path.read_text(encoding="utf-8") == "a log line\n"
+
+
+def test_stop_closes_the_log_file(settings, tmp_path, monkeypatch):
+    settings = settings.model_copy(update={"llama_log_path": str(tmp_path / "server.log")})
+    captured = {}
+
+    class FakeProcess:
+        def poll(self_inner):
+            return None
+
+        def terminate(self_inner):
+            pass
+
+        def wait(self_inner, timeout=None):
+            return 0
+
+    def fake_popen(command, **kwargs):
+        captured.update(kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    process = LlamaServerProcess(settings)
+    process.start()
+    process.stop()
+
+    assert captured["stdout"].closed is True
