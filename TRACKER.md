@@ -434,3 +434,9 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   under a gitignored `evals/artifacts/`. First real use found a pipeline gap: the Coder never sees
   the goal, so the file named in a feature task was not written in 4 of 4 feature runs (REQUIREMENTS
   §11.7). Not fixed here; proposed separately. The earlier false success has not recurred.
+- 2026-09-26 — Goal handed to the Coder (PR #34) and measured (`docs/goal-handoff-results`). Two more
+  golden runs (REQUIREMENTS §11.6 rows 7-8, §11.7): **still 0/16**, but the file named in the task
+  now gets written in 2-3 of 10 feature runs (0 of 4 before) and one run produced correct code that
+  the mandatory-TDD rule (correctly) refused to count. The pipeline gap was real, not the main
+  limit. Next candidates, none started: the Planner prompt still has a `"..."` shape line; a
+  bigger or differently-tuned model is the only lever the evidence has not been able to rule out.
