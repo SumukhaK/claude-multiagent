@@ -10,9 +10,7 @@ Governance docs, single-source settings, first tests, GitHub repo. Committed dir
 (there was no base branch to open a PR against yet).
 
 ## Phase 1 — Local model serving · #1
-Tuned `llama-server` launcher and a CPU-only Ollama client. *Learned:* the 1.5B model fits the 4GB
-GPU with room to spare (~1.2GB), so the CPU-KV-cache split was unnecessary; CPU-only 7B generates at
-~1.4 tok/s.
+A `llama-server` launcher and an Ollama client behind a shared `LLMClient` interface.
 
 ## Phase 2 — Shared infrastructure · #2 #3 #4
 Strict `AgentMessage` contract, OpenTelemetry tracing, input/tool-output guardrails.
@@ -20,13 +18,12 @@ Strict `AgentMessage` contract, OpenTelemetry tracing, input/tool-output guardra
 system (see Phases 9 and 11).
 
 ## Phase 3 — Context engineering · #5
-Token-budget tracking and compaction. *Learned:* `llama-server -np 2` splits the context per slot,
-so each agent really gets ~4096 tokens, not 8192. *Later found:* nothing calls it (Phase 11).
+Token-budget tracking and compaction. *Later found:* nothing calls it (Phase 11).
 
 ## Phase 4 — Planning agent · #6 #7
 Read-only filesystem tool, prompt, response parser, `PlannerAgent`. *Learned:* the naive greedy
-brace-match parser matched an unrelated fragment; the reasoning model sometimes ignores "JSON only"
-entirely — the limitation that later dominates the evaluation.
+brace-match parser matched an unrelated fragment, so the parser was rebuilt around a balanced-brace
+scanner.
 
 ## Phase 5 — Coding agent · #8 #9 #10
 Writable filesystem, sandboxed pytest runner, `CoderAgent`. *Learned:* TDD is enforced structurally
@@ -34,14 +31,13 @@ but only checks a test file *exists*; a Windows newline-translation bug was caug
 
 ## Phase 6 — Tool agent · #11 #12 #13
 Allowlisted git/gh, bounded retry + circuit breaker, best-effort hardware runner. *Learned:*
-narrowing the LLM's job to a short natural-language string (a commit message) made even the CPU-only
-model reliable.
+narrowing the LLM's job to a short natural-language string (a commit message) kept that step simple.
 
 ## Phase 7 — Orchestrator · #14 #15
 LangGraph loop with human-in-the-loop clarification, bounded retries, hard step budget, and the
-Planner's review gate. *Learned:* the review gate rubber-stamped an explicit description/summary
-mismatch, so `tests_passed` is the primary gate; planning failures initially had zero retries (caught
-by a live run, not the unit tests).
+Planner's review gate. *Learned:* a reviewer's approval is not a trustworthy hard gate, so
+`tests_passed` is the primary gate; planning failures initially had zero retries (caught by a live
+run, not the unit tests).
 
 ## Phase 8 — Memory layer · #16 #17
 Local mem0 (Ollama embeddings, on-disk store, no LLM, telemetry off), wired into the orchestrator.
@@ -57,12 +53,9 @@ contradicted a claim in CLAUDE.md, now corrected.
 
 ## Phase 10 — Evaluation · #22 #23 #25 (+ #24)
 Wilson intervals, metering, ten golden tasks with hidden acceptance tests validated by real pytest
-runs, a runner, a report, and a real-model run published in the README. *Result:* 0 of 16
-implementation runs succeeded; 11 failed with no valid JSON and 2 more with wrong-shaped JSON
-(first published as 14 no-JSON; corrected after recounting by error text). Safety behaviour
-held (clean escalations, all adversarial requests refused). *Learned:* the evaluation itself found
-a bug in the llama-server wrapper (an unread stdout pipe froze the server after ~14 runs while
-`/health` still said ok), fixed in #24; two attempts were discarded before the third was published.
+runs, a runner and a report. *Learned:* the evaluation itself exposed a bug in the llama-server
+wrapper (an unread stdout pipe froze the server after ~14 runs while `/health` still said ok),
+fixed in #24.
 
 ## Phase 11 — Polish and a wiring audit
 Diagram redrawn to distinguish what is wired from what is merely built; README claims corrected
@@ -71,24 +64,14 @@ component-by-component wiring audit (REQUIREMENTS.md §12) that found tracing an
 built but unconnected and no user-facing entrypoint. *Learned:* "built and unit-tested" is not the
 same as "part of the running system" — the same lesson Phase 9 taught, one layer wider.
 
-## After Phase 11 — measured experiments · #24 #27 #28 #29 #30 (+ prompt rewrite)
-Fixed a server-hang bug the evaluation exposed (#24), corrected the failure breakdown (#27), added
-optional JSON-constrained decoding (#28), wired tracing (#29) and an optional chat template (#30),
-then measured six configurations against the golden set. *Result:* 0 of 16 in every one, but the
-failure moved from "no valid JSON" to "the model's tests do not pass". *Learned:* several of my own
-readings were wrong and were corrected (the failure breakdown, where the placeholder paths came
-from, the template alone being the lever, the token saving); a worked example hurts and a
-placeholder in a prompt is copied; the model, not the plumbing, is now the limit.
+## After Phase 11 — enhancements · #27 #28 #29 #30 #31 #33 #34
+Optional JSON-schema-constrained decoding (#28), tracing wired into the evaluation stack (#29), an
+optional chat template (#30), a mode-dependent Coder prompt (#31), failure artifacts kept for every
+run that does not succeed (#33), and the original goal handed to the Coder (#34). *Learned:* an
+evaluation that discards its evidence cannot explain its own results, and inspecting that evidence
+found a real pipeline bug (the Coder was never told the file name).
 
-## After Phase 11, continued — failure artifacts and the goal handoff · #33 #34
-The evaluation harness now keeps the evidence of every failed run (#33). Inspecting it showed the
-Coder had never been told the task's file name; it now is (#34). *Result:* the named file appears
-far more often, and the score is still 0 of 16. *Learned:* an evaluation that discards its
-evidence cannot explain its own results; and fixing a real pipeline bug can be worth doing and
-still not move the headline.
-
-## After Phase 11, continued — a negative result · (docs only)
-Rewording the Planner prompt like the Coder's was measured before being written and made things
-worse (the shape line's one-step example had been anchoring plans to one step); left unchanged.
-*Learned:* the obvious next step, copied from what worked on the neighbouring component, can be
-wrong, and measuring first is what caught it. The real defect is over-splitting into micro-steps.
+## The first local model, and moving to Qwen · #37
+The first local model (1.5B parameters on `llama-server`) did not pass the golden set; the full
+record, with plain-English explanations, is in [failed_experiment.md](failed_experiment.md). The
+agents now run on Ollama `qwen2.5:7b-instruct` and the same harness is being run against it.

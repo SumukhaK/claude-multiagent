@@ -13,6 +13,8 @@ see [CLAUDE.md](CLAUDE.md); for a plain-English overview see [NON_TECHNICAL.md](
    - produce a strict, versioned, step-by-step JSON plan for the Coding agent.
 3. A **Coding agent** must, per plan step:
    - read any existing/overlapping code before writing or modifying anything,
+   - be given the original goal as well as its step (a step can drop details the goal carries,
+     such as the file name),
    - write a failing test first, then the implementation (TDD),
    - run the tests (via the sandboxed execution tool) and report pass/fail back,
    - never proceed to the next step until the Planning agent has reviewed the current one.
@@ -37,7 +39,7 @@ see [CLAUDE.md](CLAUDE.md); for a plain-English overview see [NON_TECHNICAL.md](
    output.
 10. An evaluation harness must run a fixed "golden" task set and report: latency, token usage,
     tool success rate, hallucination rate and recovery rate, and a cost proxy (local inference
-    is free, so token counts stand in for cost) — published at the bottom of `README.md`.
+    is free, so token counts stand in for cost) — recorded per run under `evals/results/`.
 
 ## 2. Non-functional requirements
 
@@ -49,48 +51,35 @@ see [CLAUDE.md](CLAUDE.md); for a plain-English overview see [NON_TECHNICAL.md](
 - **Determinism where it matters.** Retry counts, step budgets, and the plan→execute→review loop
   are deterministic Python control flow, not left to LLM judgement.
 - **Testability.** Every component must be unit-testable with a stubbed LLM client, independent
-  of whether `llama-server`/Ollama are actually running.
+  of whether Ollama (or `llama-server`) is actually running.
 - **File size discipline.** No source file over ~400 lines.
 
 ## 3. Hardware & local inference design
 
-Measured specs and the decisions derived from them are recorded in
-[TRACKER.md §2–3](TRACKER.md#2-measured-hardware-2026-09-26) (decisions D3–D5). Summary of the
-`llama-server` launch configuration for Phase 1:
+Measured specs and the decisions derived from them are in
+[TRACKER.md](TRACKER.md#1-decisions-log) (decisions D3-D5 and D8).
 
-| Setting | Value | Reason |
-|---|---|---|
-| GPU layers (`-ngl`) | all layers (999) | Model is ~1.1GB — fits GPU entirely, no partial-offload complexity needed |
-| KV cache location | GPU (default, not `--no-kv-offload`) | 4GB VRAM − ~1.1GB weights leaves ~2.9GB; more than enough for the KV cache at the context sizes this project needs, so there is no reason to pay the latency cost of spilling KV cache to CPU |
-| Flash attention | on (`--flash-attn`) | Reduces KV cache memory and improves throughput; supported on Turing (compute cap 7.5) |
-| KV cache quantization | `q8_0` for K and V | Further shrinks KV cache memory, allowing more context/parallel slots inside 4GB without a meaningful quality hit |
-| Continuous batching | on (`llama-server` default) | Lets Planner/Coder requests share the server efficiently without blocking |
-| Parallel slots | small fixed number (2) | One slot each for Planner and Coder is enough for this project's sequential-with-occasional-overlap usage pattern; more slots would burn VRAM/context for no real benefit here |
-| CPU threads for the server | capped, not "all 16" | Leaves CPU headroom for the Tool agent's Ollama (CPU-only) call and the Python orchestrator process |
+The Planner, Coder and Tool agent run on Ollama `qwen2.5:7b-instruct` (7.6B parameters, Q4_K_M,
+4.7GB, 32K native context). It does not fit the laptop's 4GB of VRAM, so Ollama splits it between
+GPU and CPU. **Measured on this machine (2026-09-26, 4096-token context, 120 generated tokens):**
+about 7.9 tokens/s, 5.1GB resident, 55% CPU / 45% GPU as reported by `ollama ps`. A large share of
+the work therefore runs on the CPU, which keeps the processor busy: long evaluation runs should
+not overlap with other work on the laptop (§2, hardware headroom).
 
-Tool agent model: Ollama `qwen2.5:7b-instruct`, invoked with GPU disabled for that call
-(`num_gpu: 0` in the Ollama request options) so it never competes with `llama-server` for the
-4GB of VRAM.
+All three agents share **one Ollama client** (same GPU and context options), because different
+options per agent would make Ollama reload the whole model each time the agents alternate. The
+evaluation script exposes it as `--agent-model`, `--agent-context` (default 8192) and
+`--agent-timeout` (default 900s: at this speed a long reply takes minutes, far past a default HTTP
+timeout). Ollama also serves `nomic-embed-text` for the memory layer (§9).
 
-All of the above are config values in `config/settings.py`, not hardcoded in agent code — they
-can be re-tuned (or the model swapped) without touching orchestration logic.
+**Optional backend: `llama-server` (llama.cpp).** `multiagent/llm/llama_server.py` builds and
+supervises a `llama-server` process from settings (GPU layers, context size, parallel slots,
+flash attention, KV-cache type, threads, log path) and `LlamaServerClient` talks to it. It was the
+first backend, serving a 1.1GB 1.5B model fully on the GPU; that attempt failed the evaluation and
+is recorded in [failed_experiment.md](failed_experiment.md).
 
-**Measured on this hardware (`scripts/benchmark_llm.py`, 2026-09-26):**
-
-| Metric | Result |
-|---|---|
-| llama-server cold start → healthy | ~21s |
-| GPU memory with model loaded | ~1.2GB of 4GB VRAM |
-| GPU memory after server stop | back to 0 MiB (clean release) |
-| Generation throughput (GPU) | ~48–88 tok/s |
-| Ollama tool-agent call, CPU-only | ~1.4 tok/s, GPU stayed at 0 MiB throughout |
-
-The GPU-offload design is confirmed: weights + KV cache both fit with ~2.8GB of VRAM to spare,
-and the CPU-only Ollama call never touched the GPU, so the two never contend for VRAM. The
-CPU-only tool-agent path is honestly slow (~20s+ for a short structured response) — acceptable
-for infrequent git/PR calls, but flagged here as a real trade-off to revisit in a later phase
-(e.g. a smaller/faster tool-calling model, or letting the tool agent use a few GPU layers when
-llama-server is idle) rather than glossed over.
+All of the above are config values in `config/settings.py` or script flags, not hardcoded in agent
+code, so the model or backend can be swapped without touching orchestration logic.
 
 ## 4. Inter-agent JSON contract (sketch — finalised in Phase 2)
 
@@ -113,8 +102,8 @@ not free-form dicts, so a malformed response fails validation loudly instead of 
 | Purpose | Choice | Notes |
 |---|---|---|
 | Agent orchestration | LangGraph | State machine for the plan/execute/review loop |
-| Local LLM serving (Planner/Coder) | llama.cpp `llama-server` (`E:\LLMCPP`) | CUDA build already present |
-| Local LLM serving (Tool agent) | Ollama, `qwen2.5:7b-instruct`, CPU-only | Already pulled |
+| Local LLM serving (all agents) | Ollama, `qwen2.5:7b-instruct`, GPU/CPU split | Already pulled |
+| Optional backend | llama.cpp `llama-server` (`E:\LLMCPP`) | CUDA build already present |
 | Observability | OpenTelemetry | Spans + structured logs; console/local exporter, no cloud account needed |
 | Evaluation (optional, later) | LangSmith / OpenEval | Off by default, free tier only, gated behind a settings flag — needs the user's API keys first |
 | Memory | mem0 (local vector store) | No cloud dependency |
@@ -130,12 +119,12 @@ Added after Phase 2, before building the Planning agent — context needs to be 
 any agent has a real conversation loop, not retrofitted after. See TRACKER.md decision D7 for
 why this became its own phase rather than a Phase 3/4 footnote.
 
-**Why this is a hard requirement here, not a nice-to-have:** llama-server runs with an explicit
-`-np 2` (parallel slots). Because the slot count is explicit rather than `auto`, this build's
-`--kv-unified` defaults to *off* (confirmed via `llama-server --help`), so the configured
-`-c 8192` context is split evenly across the 2 slots — each of the Planner and Coder effectively
-gets **~4096 tokens**, not 8192. That's a small budget for a multi-step plan-execute-review loop
-with tool output in it, so compaction is load-bearing, not optional headroom.
+**Why this is a requirement here, not a nice-to-have:** the usable context on this hardware is
+small. The KV cache competes with the weights for 4GB of VRAM, and with the optional
+`llama-server` backend an explicit `-np 2` splits the configured `-c 8192` context across two
+slots (about 4096 tokens each). The Ollama evaluation uses a context of 8192 (`--agent-context`).
+A multi-step plan-execute-review loop with tool output in it needs that budget managed, so
+compaction is load-bearing, not optional headroom.
 
 - **Every agent's conversation history is a `ContextManager`** (`multiagent/context/manager.py`),
   tracked against a token budget derived from the real, measured hardware split:
@@ -174,78 +163,27 @@ with tool output in it, so compaction is load-bearing, not optional headroom.
 
 ## 8. Known limitations (measured, not assumed)
 
-- **The Planner's response parser is robust; the local model's reliability on this task is not
-  yet good, and that's measured rather than guessed.** Live-verified against the real
-  `DeepSeek-R1-Distill-Qwen-1.5B` server (Phase 4): its reasoning prefix regularly runs past
-  1000 tokens before reaching an answer, and even at 1200 `max_tokens` its reasoning was
-  sometimes too unfocused to reach a complete, schema-valid JSON plan at all. `parse_plan_response`
-  correctly raises `PlanParsingError` in that case — the fix in Phase 4 was making the parser fail
-  loudly and correctly on messy/truncated output (a naive greedy brace-match was matching an
-  unrelated fragment in the model's prose), not making the small model itself more reliable.
-- **Likely contributing factor, not yet tried:** the Planner currently talks to llama-server's raw
-  `/completion` endpoint with a plain-text prompt — no chat template is applied, even though
-  DeepSeek-R1-Distill models are tuned for chat-formatted turns. Trying the OpenAI-compatible
-  `/v1/chat/completions` endpoint with proper system/user roles is a reasonable next experiment,
-  but is deliberately left as a follow-up rather than iterated on ad hoc here.
-- **This is exactly what Phase 10's evaluation harness exists to measure systematically** (plan
-  success rate, hallucination rate) instead of relying on a handful of manual runs like this one.
-- **The Coder shows the same pattern, one level deeper: schema-valid JSON doesn't mean correct
-  content.** Live-verified (Phase 5): the model did produce a parseable `CodeChangeProposal` for
-  a simple "add a function" step, but the proposed test asserted against an unrelated
-  pre-existing function instead of the one it was asked to implement — a test that wouldn't
-  actually verify the requested change even though it's well-formed JSON. The implementation
-  file it proposed alongside it, by contrast, was correct. `parse_code_change_response` did its
-  job (the JSON was genuinely valid), but correctness of the *content* is a separate, harder
-  problem this parser was never meant to solve, and Phase 10 is where it gets measured rather
-  than assumed.
-- **The sandbox validation was verified against real, unpredictable model output, not just
-  contrived test cases — and it worked.** In a separate live run, the model proposed a path like
-  `/python/calc.py` (an accidental absolute-looking path, not malicious). `CoderAgent` rejected
-  it before writing anything and reported a clear error, exactly as the all-or-nothing
-  pre-validation in Phase 5 was designed to do. This is the kind of thing worth confirming
-  against the real, messy model rather than trusting the synthetic escape attempts in unit tests
-  alone.
-- **A counterpoint, not just more of the same problem: scoping the LLM's job down to short
-  natural-language generation makes it reliable, even on the weaker CPU-only model.** Live-verified
-  (Phase 6): the Tool agent's commit-message generation — a single short natural-language string,
-  not nested structured JSON — asked the CPU-only `qwen2.5:7b-instruct` (Ollama) to summarize "added
-  a /health endpoint... returning {'status': 'ok'}" and got back `"Added /health endpoint to
-  FastAPI app returning {"status": "ok"}"` in ~14.4s for 16 tokens (consistent with the ~1.4 tok/s
-  measured in Phase 1) — clean, correct, no parsing needed at all. The lesson isn't "this model
-  is good" or "that model is bad" — it's that matching the task's shape to what a small model can
-  actually do reliably (short generation vs. nested schema-constrained JSON with real code
-  content) is itself a design decision, and this project deliberately narrowed the Tool agent's
-  LLM usage to exactly the part that's reliable, keeping every git/gh action itself deterministic.
-- **The step-review gate's semantic judgment is shallow — verified, not assumed, and it directly
-  shapes how Phase 7's orchestrator must use it.** Live-verified (Phase 7): given a step
-  description asking for `add(a, b)`, and a `CodeChangeReport` whose own summary says the test
-  actually asserts `calculate(2, 3) == 5` — an explicit description/summary mismatch, spelled out
-  in plain text in the prompt — the Planner's review still came back `approved: true` with
-  feedback claiming "the files changed and the summary accurately reflect the step's
-  description." It didn't catch a mismatch that was stated outright, not hidden. Conclusion: this
-  model's review approval is not a trustworthy hard gate on its own. The orchestrator (this
-  phase) therefore treats `tests_passed` as the primary, objective gate, and surfaces the
-  Planner's review as an additional signal (a rejection is acted on; an approval is not, by
-  itself, proof of correctness) rather than the deciding vote.
-- **The full end-to-end run, live: safety mechanisms worked correctly; the model still couldn't
-  finish the task within budget, and that's the honest headline, not a failure of the
-  orchestrator.** Ran the real orchestrator (real llama-server-backed Planner and Coder, a fake
-  Tool agent to avoid real git/network side effects) against "add a function `add(a, b)`..." with
-  `max_retries_per_step=2`. First finding: a planning call can fail outright — one run got back
-  pure prose with zero JSON braces anywhere in it, ignoring the "respond with ONLY a JSON object"
-  instruction completely; the newly-added plan-retry logic (this section's other fix) recovered
-  from that on a later attempt. Second finding, more interesting: the Coder proposed a file at
-  `test/add.py` that the schema accepted as a "test file" (TDD enforcement only checks that a
-  test file exists, not that its content is actually a test), but its entire content was just
-  `def add(a, b) -> int: return a + b` — no `test_` function at all. pytest correctly reported
-  this as a failure (no tests collected), `tests_passed=False` correctly skipped the review call
-  (per this project's own gating rule), and the step was retried up to the configured budget —
-  but the model never corrected the mistake within it, and the orchestrator escalated cleanly
-  with a clear structured error (`"step 0 failed review/tests after 3 retries"`) instead of
-  crashing, looping, or falsely reporting success. That's the system doing exactly what it was
-  designed to do when the underlying model can't complete a task — which is the honest measure of
-  success for this phase, not a fully green run. Systematic characterization of how often this
-  happens is Phase 10's job, not a handful of manual runs.
+System-level limitations, independent of which model is plugged in. How well a particular model
+does the job is what the evaluation (§11) measures; the record of the first model that failed it
+is in [failed_experiment.md](failed_experiment.md).
+
+- **Schema-valid does not mean correct.** The parsers validate the *shape* of a response. The
+  Coder's schema requires at least one test file but not that it contains a test function, so a
+  proposal can be well-formed and still verify nothing; the evaluation's "fake test" metric exists
+  to measure exactly this.
+- **A reviewer's approval is a signal, not proof.** With the first small model, a plainly stated
+  mismatch between a step and the Coder's summary was still approved. The orchestrator therefore
+  treats `tests_passed` as the primary, objective gate and acts on a review *rejection*, but does
+  not treat an approval as evidence of correctness.
+- **A returned error is a failure.** Agents report failure by returning `status="error"` rather
+  than raising, and a failing test run is reported as data, not as a system error; the
+  orchestrator's retry and escalation policy is built on those two facts.
+- **The sandbox rejects path escapes before any write** (all-or-nothing validation). Verified
+  against real, messy model output, not only contrived test cases: an accidental absolute-looking
+  path was rejected with a clear error and nothing was written.
+- **LLM jobs are scoped to what is reliable.** The Tool agent's only LLM task is a short
+  natural-language commit message; every git/gh action is deterministic Python. This is a design
+  decision, not a claim about any model.
 
 ## 9. Memory layer (Phase 8)
 
@@ -256,7 +194,7 @@ Local mem0 (`multiagent/memory/store.py`), wrapped in a small project-scoped `Me
   through a model on hardware where model budget is the scarcest resource (§3), and the CPU-only
   7B would take ~20s+ per memory. Embeddings only: Ollama `nomic-embed-text` + an on-disk qdrant
   store. Measured live: storing 4 memories ~0.4s, recall ~0.02s, GPU memory +4 MiB — the
-  embedder is effectively free next to llama-server's ~1.2GB.
+  embedder is effectively free next to the model itself.
 - **Telemetry off.** mem0 sends PostHog telemetry by default, read at import time. The store
   module sets `MEM0_TELEMETRY=False` before mem0 is ever imported (mem0 is imported lazily in
   `build_mem0_store` for exactly this reason). Local-first means nothing leaves the machine.
@@ -359,7 +297,7 @@ and fixes, each verified against the real system, are recorded here as they land
 - **Caller-supplied code context is data.** File contents reaching the agents are wrapped with the
   same guardrail as tool output, and injection-style phrasing is logged (not blocked — a repo can
   legitimately contain such text). It costs roughly 35 tokens per prompt of an already-tight
-  ~4096-token slot, and whether the wrapper actually changes a 1.5B model's behaviour is
+  context, and whether the wrapper actually changes a model's behaviour is
   *unmeasured*; it is defence in depth, not a demonstrated fix.
 - **Subprocess hardening.** Verified live first: a model-written test could read every secret in
   the parent's environment (`os.environ` showed both a demo API token and `GITHUB_TOKEN`). The
@@ -405,7 +343,7 @@ through the hardware runner.
 4. The input guardrail is a keyword heuristic: on a second, not-blind set it blocked 7/12 attacks
    and refused 1/12 ordinary requests (six pinned failures in `test_input_filter_limits.py`).
    The secret scanner is pattern-based: novel or obfuscated secrets pass.
-5. Whether wrapping context "as data" changes a 1.5B model's behaviour is unmeasured.
+5. Whether wrapping context "as data" changes a model's behaviour is unmeasured.
 6. Memory can retain a wrong-but-passing step (the review gate is weak, §8).
 7. `gh` acts as the developer's authenticated GitHub account; a PR is a real public action.
 
@@ -451,12 +389,13 @@ also means results say little about realistic software tasks.
 
 ### 11.2 The harness
 
-`scripts/run_eval.py` starts llama-server (Planner/Coder) and uses Ollama (Tool agent), then runs
-every golden task `--repeats` times (interleaved) through the **real** agent classes, sandboxed
+`scripts/run_eval.py` runs the agents on an Ollama model (`--agent-model`, e.g.
+`qwen2.5:7b-instruct`; without it the Planner and Coder use `llama-server` and the Tool agent uses
+Ollama), then runs every golden task `--repeats` times (interleaved) through the **real** agent classes, sandboxed
 filesystem and pytest runner, and **real git** against a throwaway repo with a *local bare remote*
 — never GitHub. Results stream to `evals/results/<timestamp>.jsonl` as each run finishes, so an
 interrupted run keeps what it has; the aggregate is rendered to `evals/results/<timestamp>.md`
-and published into a marked section of the README, replaced (not duplicated) on re-runs.
+and, with `--update-readme`, can be published into a marked section of the README.
 
 Design choices worth knowing:
 - **The runner is model-agnostic.** `run_task` takes a factory building the orchestrator for a
@@ -475,203 +414,36 @@ Design choices worth knowing:
 - **Orchestrator budget for evaluation is 12 steps** (not the default 25), to bound a run that is
   going nowhere; the model's per-response token cap is 1200.
 - **Not measured, on purpose:** marginal cost in dollars (local inference is $0 and no reference
-  price is invented) and any comparison against another model.
+  price is invented).
 
-### 11.3 First real run, and a bug the evaluation found
+### 11.3 Optional generation controls
 
-20 runs (10 tasks x 2) against the real models: **0/16 implementation runs succeeded**, 4/4
-adversarial runs refused, 0/16 legitimate tasks wrongly refused. Failure causes, classified by the
-recorded error text: 11/16 no valid JSON found, 2/16 valid JSON of the wrong shape, 1/16 a file path
-outside the sandbox, 2/16 a step failed review or tests. (This section first said 14/16 "no valid
-JSON", counting by which agent errored rather than by the error; corrected.) Full table in the
-README; raw per-run data in `evals/results/`. The number is small-sample and the model is the
-bottleneck, not the loop.
+- **JSON-constrained decoding** (`LLAMA_CONSTRAIN_JSON`, default off; `--constrain-json` on the
+  eval script): each Planner/Coder call's pydantic schema is sent to the backend (`json_schema`
+  for llama-server, `format` for Ollama) so the response must fit it. A grammar built from the
+  schema cannot see a Python validator, so rules that matter live in the schema itself:
+  `CodeChangeProposal.test_files` is required with `min_length=1`. Verified against a real
+  llama-server (including nested `$defs`); the Ollama `format` path is only unit-tested against a
+  mock so far. llama.cpp honoured `maxItems` in a probe (a step cap in the plan schema) but did
+  not appear to enforce `pattern`.
+- **Mode-dependent Coder prompt:** when constrained, the format is described in words; when
+  unconstrained, the explicit JSON shape is kept. Measured on the first small model: a
+  placeholder-shaped line is copied literally under a grammar, and a words-only prompt without a
+  grammar produces shapes the parser cannot read (details in failed_experiment.md).
+- **Chat template** (`LLAMA_USE_CHAT_TEMPLATE`, default off, llama-server only):
+  `LlamaServerClient(use_chat_template=True)` asks the server to wrap each prompt in the loaded
+  model's own chat format (`/apply-template`) before completing it; a failed template request
+  raises rather than silently sending a raw prompt. Ollama applies its models' templates itself.
+- **The Coder is given the original goal** as well as its step (`implement_step(step,
+  code_context, goal)`): a step can drop details the goal carries, such as the file name. It is
+  the same text the Planner sees, including clarification answers; the Coder gains no new tool
+  access, only more of the user's own task text, which already passed the input guardrail.
 
-Two earlier attempts were **discarded, not published**: `LlamaServerProcess` started llama-server
-with an unread `stdout=PIPE`; after roughly 14 runs of request logging the pipe buffer filled, the
-server blocked on its next log write and every completion hung while `/health` still answered ok.
-Both attempts stalled at the same run, which is what exposed it. Fixed in PR #24 (output goes to
-`LLAMA_LOG_PATH`), verified with 300 real completions; the published run is the third attempt and
-its server log (93KB) is larger than the old buffer. Lesson: an evaluation harness is also a stress
-test of the code it drives, and `/health` ok does not mean the server is serving.
+### 11.4 Results of earlier attempts
 
-### 11.4 Experiment: JSON-constrained decoding
-
-`LLAMA_CONSTRAIN_JSON` (default off) sends each Planner/Coder call's pydantic schema to llama-server
-as `json_schema` (verified against the real server, including the nested `$defs`). One schema
-change was needed to make it meaningful: `CodeChangeProposal.test_files` is now required with
-`min_length=1`, because a grammar built from the schema cannot see a Python validator (TDD was
-previously enforced only after decoding).
-
-Same 20 runs, classified by recorded error text: **no-JSON failures 11 -> 0; successes 0/16 -> 0/16;
-tokens per implementation run ~4,020 -> ~1,220; median wall time ~55s -> ~6s**. The 16 failures
-became 15 well-formed-but-unusable Coder proposals (10 invented stand-in paths such as
-`/path/to/test1`, which the sandbox rejects; 5 writes to the sandbox directory itself) and 1
-failed review. All 11 test files the Coder proposed contained no `test_` function (baseline 3/4).
-(Corrected later, see 11.6: the invented paths were the model's own, but the `"..."` file bodies
-*were* copied from the prompt's shape line, and the "next experiment" turned out to be different
-from the one named here.)
-
-### 11.5 Chat template (`LLAMA_USE_CHAT_TEMPLATE`, default off)
-
-`LlamaServerClient(use_chat_template=True)` first asks llama-server to wrap the prompt in the loaded
-model's own chat format (`/apply-template`), then completes it. Until now every prompt went to
-`/completion` as raw text, which a chat-tuned model was never trained on. The server knows the
-format, so nothing model-specific is hardcoded; a failing template request raises rather than
-silently falling back to a raw prompt.
-
-What was measured (non-golden tasks, real `CoderAgent` with real files and pytest, constrained
-decoding, 16 samples per cell; small, so read as direction not proof). Test files containing a
-`test_` function:
-
-| | raw | chat template |
-|---|---|---|
-| current prompt (shape line with `"..."`) | 0/16 | 1/16 |
-| reworded prompt (rules in words, no `"..."`) | 1/28 | 19/28 (pooled from two runs) |
-
-Two conclusions, one of them a correction. (1) **The template alone does nothing** with the current
-prompt: an earlier reading of "the template is the lever" was confounded by a simultaneous prompt
-change and was wrong on its own. (2) The two changes are **jointly** needed: the reworded prompt
-only works with the template, and the template only helps the reworded prompt. The server's
-template ends with `<think>` plus a newline; keeping or stripping it made no measurable difference (9 vs 8).
-Also refuted: letting the model think first and constraining only the final answer (0/12 tests
-passing, slower). The prompt rewrite lands separately.
-
-### 11.6 Eight configurations, and what they actually show
-
-All runs use the same ten golden tasks x 2 repeats (16 implementation runs, 4 adversarial),
-classified by recorded error text. Raw data for every row is in `evals/results/`.
-
-| # | Configuration | Success | False success | Failures (of 16) | Tokens/run | Median wall | Runs that wrote a test file |
-|---|---|---|---|---|---|---|---|
-| 1 | Baseline: raw prompt, unconstrained | 0 | 0 | 11 no/invalid JSON, 2 wrong-shape JSON, 1 bad path, 2 review/tests | ~4,020 | 55s | 4 |
-| 2 | JSON-constrained, original prompt | 0 | 0 | 10 bad path, 5 write failed, 1 review/tests | ~1,220 | 6s | 11 |
-| 3 | Constrained + worked example (branch discarded) | 0 | 0 | 16 review/tests | ~1,680 | 9s | 16 (all 16 fake) |
-| 4 | Unconstrained + worked example (branch discarded) | 0 | 0 | 14 no/invalid JSON, 2 review/tests | ~4,520 | 83s | 2 |
-| 5 | **Constrained + words prompt + chat template** | 0 | **1** | 15 review/tests | ~1,740 | 16s | 16 (10 fake) |
-| 6 | Unconstrained + words prompt + chat template (prompt no longer selectable) | 0 | 0 | 11 wrong-shape JSON, 5 no/invalid JSON | ~4,540 | 57s | 0 |
-| 7 | Constrained + words prompt + chat template + **goal given to the Coder** | 0 | 0 | 13 review/tests, 3 no/invalid JSON | ~2,550 | 19s | 15 (7 fake) |
-| 8 | Default (raw prompt, unconstrained) + **goal given to the Coder** | 0 | 0 | 6 no/invalid JSON, 5 wrong-shape JSON, 3 bad path, 1 review/tests, 1 empty plan | ~3,510 | 37s | 5 (all 5 fake) |
-
-**Nothing solved a single task.** 0 of 16 in all eight. No configuration is "better" at the thing
-that matters; each one moves *where* the failure happens. Read the table as a map of failure modes,
-not a leaderboard. What the map shows:
-
-1. **Constrained decoding removes the format failure** (11 -> 0 no-JSON) and makes failure
-   cheaper: about 3.3x fewer tokens and about 9x faster wall time. (An earlier note said "9x fewer
-   tokens": wrong, corrected.) It does not make the content right.
-2. **A worked example is harmful** for this model: copied in 17 of 24 non-golden samples, and in
-   every one of the 16 runs of row 3 at least one proposed test file contained no test. Removed.
-3. **A `"..."` in the shape line gets copied.** With constrained decoding any string is valid, so
-   the model returned `"..."` as file bodies. Describing the format in words fixed that, but only
-   **together with the chat template** (11.5), and only **when constrained**: row 6 shows the
-   words prompt without a grammar makes the model invent its own JSON structure (10 of the 16
-   failures were Coder wrong-shape JSON, 11 counting one Planner; for example `test_files` as a
-   dict). So the Coder prompt now
-   depends on the decoding mode.
-4. **Think-then-constrain was tested and refuted** (0/12 passing, slower).
-5. **The best configuration (row 5) gets every run to the test stage**: the model writes a test
-   file and an implementation, they are run, and they fail (15 of 16). The remaining limit is the
-   quality of what a 1.5B model writes, not plumbing, paths or format. That is the honest bottom
-   line for this hardware and model.
-6. **One false success** (`feature_add#1`, row 5): the orchestrator reported done, the Coder's own
-   tests passed and the reviewer approved, but the hidden acceptance test failed. I could not
-   inspect why, because the harness discarded each sandbox. It now keeps them (11.7); the false
-   success has not recurred since, so this one remains unexplained.
-
-7. **The Coder was never told the goal, and now is** (rows 7 and 8, 11.7). Handing it the original
-   task raised the share of feature runs that write the file the task names from 0 of 4 to 2 of 10
-   (row 7) and 3 of 10 (row 8), but the success count stayed 0 of 16: the 1.5B model often still
-   writes only test files, wrong names, or nothing. Row 8 also holds the first run in which
-   **correct code was produced**: `feature_safe_divide#1` wrote a correct `safe_divide` into the
-   named `mathx.py` and the hidden test passes (3 of 3), but it was reported as failed, because the
-   model put that file in `test_files` and later proposals had none, so the mandatory-TDD rule
-   failed the step. It is correctly not counted as a success (a test file is required), and the
-   rule stays.
-
-**Corrections made during this investigation** (each fixed in the docs where it appeared): the
-baseline breakdown was first counted by agent instead of by error text (14 -> 11 no-JSON, PR #27);
-"the model echoes the prompt's placeholder paths" (the paths were its own; only the `"..."` bodies
-were copied); "the template is the lever" (confounded by a simultaneous prompt change, 11.5); and
-"9x fewer tokens" (3.3x).
-
-**How far to trust this.** Twenty runs per row, one pass each, non-deterministic: a small sample
-with wide intervals, so a difference of a few runs is noise. The prompt ablations behind rows 3 and
-5 used non-golden tasks (12-28 samples per cell), but the decision to drop the example and reword
-the prompt was also informed by the golden-run failure classes, so the golden set is not a clean
-held-out test of those changes. "Fake test" counts a run if *any* proposed test file lacks a
-`test_` function. The row 4 run overlapped with a full test-suite run on the same machine, so its
-timings are slightly inflated. The before/after on file names (11.7) compares ten runs per row against four. None of this changes the headline: 0/16.
-
-### 11.7 A first look inside failed runs
-
-With artifacts kept, a 6-run check (constrained + words prompt + chat template; 3 tasks x 2)
-showed something the numbers could not: **in all 4 feature runs the file named in the task was
-never written**. The goal says "in `calc.py`" (or `fizz.py`); the Planner's step ("Define the add
-function...") drops it; the Coder is given only the step, never the original goal, so it invents
-`my_add.py`, `add.py`, `my_module.py`. Every feature task's hidden test imports from the named
-file, so those runs could not pass however good the model was. The two bug-fix runs did touch the
-named file (`stats.py`), but only because it already exists as a seed file. Other things visible
-now: file names with spaces and directories, tests such as `def test_add(x): assert y(x) ...`, and
-content with broken string escapes.
-
-Caveats: six runs, one configuration; this is evidence of a pipeline gap, not a measured share of
-the 0/16. It also means earlier comparisons between configurations were partly measuring a
-constraint no model could satisfy.
-
-**The fix and what it did.** The Coder is now given the original goal (with any clarification
-answer), exactly as the Planner sees it, and told to use a file name the task mentions (PR #34).
-Rerunning the full golden set (rows 7 and 8 of 11.6), counting runs where the file named in the
-goal exists in the saved sandbox:
-
-| | Feature runs writing the goal's file | All runs writing it |
-|---|---|---|
-| Before (6-run check, constrained) | 0 of 4 | n/a (not measured for all tasks) |
-| Row 7, constrained + template + goal | 2 of 10 | 8 of 16 |
-| Row 8, default + goal | 3 of 10 | 7 of 16 |
-
-A clear but small effect, on ten feature runs per row, against a check of only four before. The
-bug-fix and clarification tasks name a file that already exists (seed) or is easy to guess, so
-their numbers say little about the fix. The success count did not move (0 of 16 in both rows), so
-the gap was real but was not what was holding results at zero: the model, not the handoff, is
-still the limit. A design note: the Coder gains no new tool access, only more of the user's own
-task text, which already passed the input guardrail.
-
-### 11.8 The Planner prompt: tested, rejected, left unchanged
-
-The Coder prompt improved when its `"..."` shape line was replaced by rules in words (11.5, 11.6),
-and the Planner prompt has a similar shape line, so the same rewording was the obvious next step.
-It was measured before being written, on non-golden goals (4 goals x 6 samples = 24 per variant),
-real `PlannerAgent`, chat template, constrained decoding:
-
-| Variant | Parsed | `goal` is a placeholder | Single-step plans | Steps per plan | Names the goal's file |
-|---|---|---|---|---|---|
-| Current prompt (shape line) | 23/24 | 2 | 9 | 2.9 | 3 |
-| Same, run again | 24/24 | 2 | 9 | 3.2 | 2 |
-| Format in words only | 23/24 | 0 | **0** | **5.8** | 1 |
-| Words + "a small task is ONE step" + "name the file" | 24/24 | 0 | 1 | 4.6 | 2 |
-
-**The rewording makes the Planner worse, so it was not made.** The one defect it fixes, the model
-copying `<restate the goal>` into `goal`, is harmless: nothing in the orchestrator or agents reads
-`plan.goal` (the goal comes from state). The current prompt never produced a `"..."` step
-description or edge-case list in 24 samples. What the shape line does, unintentionally, is show a
-plan with **one** step, and the model follows it; removing the line roughly doubled the number of
-steps, and an explicit "one step for a small task" rule barely helped (1 of 24).
-
-**Over-splitting is the real Planner defect.** In the saved constrained golden run (row 7 of
-11.6) the 16 parsed plans average 3.4 steps, only 4 are a single step, and some run to 7. Each
-step is a separate Coder call that must add its own test file and is reviewed separately, so a
-small task cut into micro-steps ("sum the list", then "divide by the length") gives the 1.5B model
-more chances to fail. Whether that materially lowers the success rate is **not measured**.
-
-**A grammar-enforced cap is feasible, and untested for success.** Adding `maxItems` to the plan's
-`steps` in the JSON schema is honoured by llama-server: with a cap of 2, the longest plan fell
-from 6 to 2 steps and the mean from 2.75 to 1.71, with nothing unparseable (a probe of 24 samples
-per arm, feasibility only). It is the same lesson as the Coder's `test_files` rule: put a rule
-where the grammar can enforce it, not in prose the model may ignore. Given how the Coder rows
-behaved, fewer steps is unlikely by itself to turn any 0/16 into a success, so it is a candidate
-experiment, not a recommendation. The review prompt has a similar `"feedback": "..."` line and was
-not measured either; the review gate leans on `tests_passed`, so it was left alone.
+The evaluation of the first local model (a 1.5B-parameter reasoning model on `llama-server`) and
+everything tried to rescue it are recorded in [failed_experiment.md](failed_experiment.md), which
+also holds the measurements that used to live in this section.
 
 ## 12. Wiring audit: what is built versus what runs
 
@@ -700,8 +472,8 @@ Consequences, stated plainly:
   unit-tested, and nothing connects it.
 - Context is not enforced *anywhere*. The agents are stateless single-shot prompts, so there is no
   history for `ContextManager` to compact — but nothing checks that a prompt (code context, recalled
-  memory, the step) plus the response reserve fits the ~4096-token slot either. An oversized
-  prompt would be truncated or rejected by llama-server rather than trimmed deliberately.
+  memory, the step) plus the response reserve fits the model's context window either. An oversized
+  prompt would be truncated or rejected by the backend rather than trimmed deliberately.
 - The original brief asked for "one layer that takes input from the user". The orchestrator
   provides the loop, but there is no way to run it other than through Python or the scripts.
 
@@ -711,9 +483,7 @@ What would close these (not scheduled; ordered by how cheaply they'd close a sta
    to fit, using the existing budget helpers.
 3. **An entrypoint:** a small CLI that builds the real stack, asks clarifying questions on the
    terminal and prints the outcome.
-4. **Output format (the measured bottleneck, §11):** grammar/JSON-schema-constrained decoding in
-   llama-server, or the chat endpoint, so the model can't answer in prose when a JSON object is
-   required. This is the highest-value item and is now *measurable* with the evaluation harness.
+4. ~~**Output format**~~ *done: optional JSON-schema-constrained decoding and chat template, §11.3.*
 
 ### 12.1 Tracing, wired (enhancement after the audit)
 

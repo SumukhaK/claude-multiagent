@@ -112,11 +112,12 @@ done/blocked/deferred instead of removing them.
 |---|---|---|
 | D1 | GitHub repo `claude-multiagent`, **public** | User choice |
 | D2 | LangSmith/OpenEval **off by default**, OpenTelemetry only for now | No API keys available yet; keeps everything local/free; can be enabled later via a settings flag without code changes |
-| D3 | Planner + Coder agents run on `llama-server` (llama.cpp) hosting `DeepSeek-R1-Distill-Qwen-1.5B-UD-Q4_K_XL.gguf`, **fully GPU-offloaded**, flash attention on, quantized (q8_0) KV cache also on GPU, continuous batching with a small fixed slot count | Measured hardware: GTX 1650 Ti has only 4GB VRAM. The model's weights are ~1.1GB, so full GPU offload of *both* weights and KV cache fits comfortably with headroom — the CPU-KV-cache-offload trick the user suggested is for models whose weights nearly fill VRAM, which isn't the case here. Flash attention + quantized KV cache stretch that headroom further, allowing more context/parallel slots without more hardware. This is the most efficient option, not just the fastest one. |
-| D4 | Tool agent runs `qwen2.5:7b-instruct` via Ollama, **CPU-only** (GPU disabled for this call) | Avoids VRAM contention with the always-resident llama.cpp server; tool-call formatting is latency-tolerant, so CPU is an acceptable trade for keeping total system load balanced and avoiding the 85%+ utilisation risk the user flagged |
+| D3 (superseded by D8) | Planner + Coder agents ran on `llama-server` hosting a 1.5B distilled model, fully GPU-offloaded | Fit the 4GB GPU with room to spare. The outcome is recorded in [failed_experiment.md](failed_experiment.md). |
+| D4 (superseded by D8) | Tool agent runs `qwen2.5:7b-instruct` via Ollama, **CPU-only** (GPU disabled for this call) | Avoids VRAM contention with the always-resident llama.cpp server; tool-call formatting is latency-tolerant, so CPU is an acceptable trade for keeping total system load balanced and avoiding the 85%+ utilisation risk the user flagged |
 | D5 | Orchestrator itself makes no LLM calls — pure LangGraph state machine / Python logic | Keeps hardware load minimal and the control flow deterministic and easy to reason about/test |
 | D6 | Python 3.11 + `uv` for the whole project | Already installed and working on this machine; matches the pydantic/LangGraph/mem0/OpenTelemetry ecosystem |
 | D7 | Inserted a new Phase 3 — **context engineering** — ahead of the Planning agent, renumbering old Phases 3–10 to 4–11 | User follow-up (§0.1): context compaction, tool-history eviction, per-agent summarization, and a `/compact`-equivalent needed to exist *before* any agent has a real conversation loop, not bolted on after. Also newly justified by a concrete hardware finding: `llama-server -np 2` makes this build's `--kv-unified` default to off, so the configured 8192-token context is actually split ~4096 tokens per Planner/Coder slot — a budget worth tracking explicitly. See REQUIREMENTS.md §6. |
+| D8 | Planner, Coder and Tool agent run on Ollama `qwen2.5:7b-instruct`, split between GPU and CPU by Ollama (`scripts/run_eval.py --agent-model`); all agents share one client so the model is not reloaded between them | The first local model failed the evaluation ([failed_experiment.md](failed_experiment.md)) and the cause is believed, not proven, to be model size. Measured here: about 7.9 tokens/s, 5.1GB resident, about 45% on the GPU at a 4096 context. `qwen2.5-coder:7b` was deliberately not pulled (an unknown gain was judged not worth the time). |
 
 ## 2. Measured hardware (2026-09-26)
 
@@ -127,7 +128,6 @@ done/blocked/deferred instead of removing them.
 | Discrete GPU | NVIDIA GeForce GTX 1650 Ti, **4096 MiB VRAM**, compute cap 7.5, driver 551.61, CUDA 12.4 |
 | iGPU | AMD Radeon Graphics (display only — no CUDA/ROCm backend built into the local llama.cpp, so it isn't used for inference) |
 | Local llama.cpp build | `E:\LLMCPP`, CUDA 12.4 x64 build (`ggml-cuda.dll` present), includes `llama-server.exe` |
-| Local model | `DeepSeek-R1-Distill-Qwen-1.5B-UD-Q4_K_XL.gguf`, ~1.1GB on disk |
 | Ollama models already pulled | `qwen2.5:14b-instruct`, `qwen2.5:7b-instruct`, `qwen2.5:7b`, `qwen3.5:latest`, `mistral:latest`, `nomic-embed-text:latest` |
 | Tooling available | git 2.45.1, gh 2.95.0 (authenticated as `SumukhaK`, repo+workflow scopes), ollama 0.34.2, python 3.11.9, uv 0.11.1 |
 
@@ -147,7 +147,7 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 | 7 | Orchestrator: LangGraph state machine wiring all three agents, human-in-the-loop clarification interrupt, retry/escalation policy, hard step-budget circuit breaker, end-to-end test | ✅ |
 | 8 | Memory layer: local mem0 (local embeddings via `nomic-embed-text`, local vector store), wired into Planner + Coder | ✅ |
 | 9 | Guardrails & security hardening pass: expand injection/secret-exfiltration filters, sandbox/tool-allowlist audit | ✅ |
-| 10 | Evaluation harness: golden task set, metrics (latency, token usage, tool success rate, hallucination rate + recovery, cost proxy), results appended to `README.md` | ✅ |
+| 10 | Evaluation harness: golden task set, metrics (latency, token usage, tool success rate, hallucination rate + recovery, cost proxy), results recorded per run under `evals/results/` | ✅ |
 | 11 | Polish: finalize architecture diagram, changelog, wiring audit (demo deferred: there is no entrypoint yet, see REQUIREMENTS.md §12) | ✅ |
 
 ## 4. Phase log
@@ -211,10 +211,7 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   unrelated `{"status": "ok"}` fragment in the model's own prose, and `<think>` stripping
   assuming a matched opening tag that this model's raw-completion output doesn't actually emit.
   Both fixed with a proper balanced-brace scanner and a fallback for a bare `</think>`. Also
-  surfaced a real, honest limitation — this 1.5B model's reasoning is verbose and sometimes never
-  reaches a valid answer even at 1200 `max_tokens` — recorded in REQUIREMENTS.md §8 rather than
-  hidden, with the parser now failing loudly and correctly on that rather than silently
-  mis-parsing. Also fixed a real design gap caught in self-review: an empty plan with no steps
+  fixed a real design gap caught in self-review: an empty plan with no steps
   and no clarifying questions was reported as "ok" — a degenerate response the orchestrator
   would have silently treated as a completed empty plan — now reported as an error instead.
   27 new tests, 102 tests passing overall. **Phase 4 complete.**
@@ -274,10 +271,8 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   `HardwareTestRunner`, with a shared circuit breaker across push/PR-create only (the
   network-dependent, correlated-failure-prone operations — not the local, deterministic
   create_branch/commit). `max_retries` means total attempts everywhere in this class, consistently.
-  Live-verified against the real CPU-only Ollama model: commit-message generation — a short
-  natural-language string, not nested JSON — came back clean on the first try, a useful
-  counterpoint to Phase 4/5's findings recorded in REQUIREMENTS.md §8 — matching the LLM's job to
-  what a small model can actually do reliably is itself a design decision. 20 new tests
+  Live-verified against the Ollama model: commit-message generation — a short natural-language
+  string, not nested JSON — came back clean on the first try. 20 new tests
   (13 ToolAgent + 7 HardwareTestRunner), 186 tests passing overall. **Phase 6 complete.**
 - 2026-09-26 — Phase 7 started. First component landed on `feat/planner-review-step`: a new
   `StepReview` contract payload and `PlannerAgent.review_step()` — the mandatory review gate
@@ -386,65 +381,24 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   the agents, and is consistent with the input guardrail. 38 new tests, all passing first time;
   503 total. Next: the runner, the real run, and publishing results.
 - 2026-09-26 — Phase 10 complete on `feat/eval-runner`: runner, report and real-system wiring, then
-  the first real run through the real stack. **0/16 implementation runs succeeded** (11 no valid
-  JSON, 2 wrong-shaped JSON, 1 path outside the sandbox, 2 failed review/tests; first recorded as
-  "14 no valid JSON", corrected after recounting by error text); 4/4 adversarial refused; 0 legitimate tasks
-  wrongly refused. Two earlier attempts were discarded after the evaluation exposed a real bug:
-  the llama-server wrapper's unread stdout pipe froze the server after ~14 runs (fixed separately in
-  PR #24, verified with 300 real completions). Results published at the bottom of the README with
-  an interpretation that does not oversell 0 hallucinated successes (there were 0 claimed
-  successes). 555 tests passing (+6 documented expected failures). Next: JSON-constrained decoding
-  (branch `feat/json-constrained-decoding`, code written, real-server check pending) and tracing.
+  the first real run through the real stack. The evaluation exposed a real bug in the llama-server
+  wrapper (an unread stdout pipe froze the server after ~14 runs; PR #24). The first local model
+  did not pass the golden set; that result and everything tried afterwards are recorded in
+  [failed_experiment.md](failed_experiment.md).
 - 2026-09-26 — Phase 11 (polish) on `feat/final-docs`: architecture diagram redrawn to separate what
   is wired from what is only built (`classDef notwired`), README claims corrected (LangSmith/OpenEval
   are not used; the intro no longer promises a *merged* PR), new CHANGELOG.md, NON_TECHNICAL.md
-  "where things stand" written from the real evaluation result, and a component-by-component wiring
-  audit (REQUIREMENTS.md §12) that found tracing and context budgeting built but unconnected and no
-  user-facing entrypoint. The demo item is deliberately not done: an entrypoint is a new feature, not
-  polish. Docs only, no code changed.
-- 2026-09-26 — JSON-constrained decoding built and measured on `feat/json-constrained-decoding`
-  (optional `json_schema` on `LLMClient.generate`, `constrain_json` on Planner/Coder,
-  `LLAMA_CONSTRAIN_JSON`, `--constrain-json` on the eval script; `CodeChangeProposal.test_files` now
-  demands one item in the schema itself). Verified against the real server. A/B on the same 20 runs:
-  no-JSON failures 11 -> 0, successes 0 -> 0, ~3.3x fewer tokens and ~9x faster (first written as "9x fewer tokens", wrong), every proposed test
-  file empty of tests. Also found while comparing: the baseline failure breakdown had been counted by
-  agent instead of by error text (fixed in PR #27). Flag stays off. Next: prompt improvements, then
-  tracing wiring.
-- 2026-09-26 — Tracing wired on `feat/wire-tracing` (the second item from the Phase 11 wiring
-  audit). Traced wrappers for LLM/agent/tool calls, a per-run root span in the orchestrator, a JSON-
-  lines file exporter and a failure log, wired into `build_real_system` and the evaluation script.
-  Error-status agent messages and unsuccessful tool results count as failures (agents return errors
-  rather than raising); prompts, responses and raw tool output are never recorded. Verified end to
-  end with the real exporter. There is still no user-facing entrypoint to attach it to.
-- 2026-09-26 — Investigated the empty test files (`feat/llama-chat-template`). Not a metric bug: under
-  constrained decoding the model copied the `"..."` placeholders in the prompt's shape line. Added a
-  server-side chat-template option (`LLAMA_USE_CHAT_TEMPLATE`, default off). A first reading ("the
-  template fixes it") was wrong: a 2x2 showed the template and a reworded prompt are only useful
-  together; think-then-constrain was refuted. The prompt rewrite follows on its own branch.
-- 2026-09-26 — Results write-up (`feat/coder-prompt-rewrite`). Six configurations on the same 20 runs
-  (REQUIREMENTS §11.6): **0/16 successes in every one**, one false success in the best. The best
-  configuration (constrained + words prompt + chat template) gets every run to the test stage; the
-  1.5B model's code and tests fail. Worked example removed (harmful), Coder prompt made dependent on
-  decoding mode (words when constrained, explicit shape when not), because the words-only prompt
-  made an unconstrained model invent JSON shapes. Four corrections to earlier claims recorded in
-  §11.6. Not done: keeping failing proposals to explain the false success; Planner prompt still
-  has a `"..."` shape line.
-- 2026-09-26 — Failure artifacts kept (`feat/eval-failure-artifacts`). Every run that does not
-  succeed now leaves its raw model responses, the hidden test's output and a copy of the sandbox
-  under a gitignored `evals/artifacts/`. First real use found a pipeline gap: the Coder never sees
-  the goal, so the file named in a feature task was not written in 4 of 4 feature runs (REQUIREMENTS
-  §11.7). Not fixed here; proposed separately. The earlier false success has not recurred.
-- 2026-09-26 — Goal handed to the Coder (PR #34) and measured (`docs/goal-handoff-results`). Two more
-  golden runs (REQUIREMENTS §11.6 rows 7-8, §11.7): **still 0/16**, but the file named in the task
-  now gets written in 2-3 of 10 feature runs (0 of 4 before) and one run produced correct code that
-  the mandatory-TDD rule (correctly) refused to count. The pipeline gap was real, not the main
-  limit. Next candidates, none started: the Planner prompt still has a `"..."` shape line; a
-  bigger or differently-tuned model is the only lever the evidence has not been able to rule out.
-- 2026-09-26 — Planner prompt rewording tested and **rejected** (`docs/planner-prompt-negative-result`,
-  REQUIREMENTS §11.8). Same method as the Coder (24 samples per variant on non-golden goals): words
-  only removed a harmless placeholder in `goal` (nothing reads `plan.goal`) but doubled the steps per
-  plan (2.9 -> 5.8), because the shape line's one-step example had been anchoring plans to one step.
-  Real Planner defect is over-splitting (golden run: mean 3.4 steps, up to 7). A `maxItems` cap in
-  the plan schema works on the real server (mean 2.75 -> 1.71); whether it helps success is
-  untested. No code changed; this supersedes the earlier note that the Planner prompt still needed
-  the same treatment as the Coder's.
+  "where things stand", and a component-by-component wiring audit (REQUIREMENTS.md §12) that found
+  tracing and context budgeting built but unconnected and no user-facing entrypoint. The demo item
+  is deliberately not done: an entrypoint is a new feature, not polish. Docs only.
+- 2026-09-26 — Enhancements after Phase 11, each on its own branch and PR: optional JSON-schema-
+  constrained decoding (`LLAMA_CONSTRAIN_JSON`, #28), tracing wired into the evaluation stack (#29),
+  an optional server-side chat template (`LLAMA_USE_CHAT_TEMPLATE`, #30), a mode-dependent Coder
+  prompt (#31), failure artifacts kept for every run that does not succeed (#33), and the original
+  goal handed to the Coder (#34). Details in REQUIREMENTS §11.2-11.3.
+- 2026-09-26 — First local model recorded as a failed experiment (`failed_experiment.md`, #37),
+  including a plain-English explanation of each failure and which failures were my own bugs. The
+  Planner-prompt rewording was measured and rejected (documented there).
+- 2026-09-27 — Model moved to Ollama `qwen2.5:7b-instruct` (decision D8). The eval script gained
+  `--agent-model`, `--agent-context` and `--agent-timeout`; all three agents share one client. First
+  smoke run on one task completed end to end; the full golden run is in progress.
