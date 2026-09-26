@@ -6,10 +6,13 @@ tooling on this machine yet (the Compose frontend is a later phase) -- this dete
 honestly and reports it, rather than pretending to run tests it can't actually run.
 """
 
+import os
 import shutil
 import subprocess
 import time
 from dataclasses import dataclass
+
+from multiagent.tools.subprocess_env import scrubbed_environment
 
 
 @dataclass(frozen=True)
@@ -37,11 +40,22 @@ class HardwareTestRunner:
                 output="adb not found -- no device/emulator tooling available on this machine",
             )
 
-        args = command or ["adb", "devices"]
+        args = ["adb", "devices"] if command is None else command
+        if not args or args[0] != "adb":
+            # `adb` merely existing must not make this a way to run any executable: the Tool
+            # agent's tools are a fixed allowlist, not a generic command passthrough.
+            return HardwareTestResult(
+                ran=False, passed=False, output="refusing to run: only adb commands are allowed"
+            )
         started = time.monotonic()
         try:
             result = subprocess.run(
-                args, capture_output=True, text=True, timeout=self._timeout_seconds, check=False
+                args,
+                capture_output=True,
+                text=True,
+                timeout=self._timeout_seconds,
+                check=False,
+                env=scrubbed_environment(os.environ),
             )
         except subprocess.TimeoutExpired:
             return HardwareTestResult(
