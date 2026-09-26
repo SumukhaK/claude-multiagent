@@ -129,7 +129,7 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 
 | Phase | Scope | Status |
 |---|---|---|
-| 0 | Project scaffolding: CLAUDE.md, README/REQUIREMENTS/NON_TECHNICAL/TRACKER docs, `config/settings.py`, `.env.example`, `pyproject.toml`, first test, GitHub repo created & pushed | 🔶 |
+| 0 | Project scaffolding: CLAUDE.md, README/REQUIREMENTS/NON_TECHNICAL/TRACKER docs, `config/settings.py`, `.env.example`, `pyproject.toml`, first test, GitHub repo created & pushed | ✅ |
 | 1 | Local model serving: tuned `llama-server` launch config (GPU offload, flash-attn, quantized KV cache, continuous batching), Ollama CPU-only helper for the tool model, a thin LLM client wrapper, smoke-test + micro-benchmark (tok/s, latency, VRAM) | ⬜ |
 | 2 | Shared infra: pydantic JSON schemas for inter-agent messages, OpenTelemetry logging/tracing wrapper, guardrail input filter, config loader — all unit-tested with a stubbed LLM client | ⬜ |
 | 3 | Planning agent: read-only filesystem tools, clarification-question flow, plan schema + validator, prompt template | ⬜ |
@@ -144,3 +144,11 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 ## 4. Phase log
 
 - 2026-09-26 — Phase 0 started: hardware scanned, tooling verified, docs drafted, decisions D1–D6 recorded.
+- 2026-09-26 — Phase 0 done: `config/settings.py` + tests pass (`uv run pytest`), lint clean
+  (`uv run ruff check .`), committed directly to `main` as a repo-bootstrap commit (there was no
+  base branch to PR against yet — see note below), public repo created and pushed:
+  https://github.com/SumukhaK/claude-multiagent. PR-per-feature workflow starts at Phase 1.
+
+**Note on Phase 0's commit:** it landed directly on `main` rather than via a branch+PR, because a
+PR needs an existing base branch to merge into, and this commit *is* what created that base
+branch. Every phase from here on gets its own branch, PR, self-review, and merge.
