@@ -53,8 +53,10 @@ try, and how often it made something up and caught its own mistake).
 Everything above is built and tested. The first attempt used a very small AI model (1.5 billion
 "settings"); it could not complete any of the test tasks, and the full story, explained in plain
 English, is in [failed_experiment.md](failed_experiment.md). The project now runs on a larger model
-(7.6 billion "settings", `qwen2.5:7b-instruct`) that still fits on this laptop, and is being tested
-against the same set of tasks. Every failure is reported cleanly, every harmful request is refused,
+(7.6 billion "settings", `qwen2.5:7b-instruct`) that still fits on this laptop, and it
+mostly writes correct answers: the hidden answer key agreed with its work in 11 of 16 tasks (none
+before). The system still reported no successes, because its own "reviewer" step kept rejecting
+good work and a few answers were thrown away over formatting mistakes in the AI's reply; fixing those is the next job. Every failure is reported cleanly, every harmful request is refused,
 and a detailed activity log exists for test runs. A "context budget" tracker is built but not
 switched on, and there is no simple command-line front door yet; the technical notes list exactly
 what is and is not connected.

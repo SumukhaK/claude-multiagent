@@ -401,7 +401,12 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   Planner-prompt rewording was measured and rejected (documented there).
 - 2026-09-27 — Model moved to Ollama `qwen2.5:7b-instruct` (decision D8). The eval script gained
   `--agent-model`, `--agent-context` and `--agent-timeout` (#38); all three agents share one client.
-  First smoke run on one task completed end to end; the full golden run is in progress.
+  First golden run on it (`evals/results/20260926T184340Z`): the hidden acceptance test passed in
+  **11 of 16** implementation runs (0 of 16 with the 1.5B model), yet the orchestrator reported
+  success in 0 of 16. Of the 11: 7 were correct code that the reviewer rejected on every attempt, 2
+  were stopped by malformed JSON, 2 failed on the Coder's own tests. Not fixed, candidates for
+  next: the review gate, plan granularity, lenient JSON escape handling, the Coder's self-written
+  tests. Detail in failed_experiment.md section 8.
 - 2026-09-27 — Ollama made the default backend everywhere (`feat/ollama-default-backend`): settings
   `OLLAMA_AGENT_*` replace `OLLAMA_TOOL_*` (one shared model for all agents), `CONSTRAIN_JSON`
   replaces the llama-specific name, `agent_client_from_settings()` builds the shared client, the
