@@ -105,6 +105,12 @@ note per phase as it lands.
   and `PlannerAgent`, composing them into "produce a plan or ask for clarification". Live-verified
   against the real local model, which surfaced a real, documented limitation — see
   [REQUIREMENTS.md §8](REQUIREMENTS.md#8-known-limitations-measured-not-assumed).
+- **Phase 5 — Coding agent**: a sandboxed writable filesystem tool and a sandboxed pytest runner
+  (both with no shell strings, both with a hard timeout/all-or-nothing path validation), plus
+  `CoderAgent.implement_step()` — propose a test-first change, write it, run the real suite, and
+  report. TDD is enforced at the schema level (a proposal with no test files fails validation), a
+  failing test run is reported as useful data rather than a system error, and files are never
+  rolled back on failure. Live-verified twice against the real model — see REQUIREMENTS.md §8.
 
 ## Running locally
 
