@@ -228,6 +228,29 @@ reported as done that was not, the input guardrail refused all 4 adversarial run
 refused none of the 16 legitimate ones. "0 hallucinated successes" here is a consequence of "0
 claimed successes", not evidence that the system never hallucinates.
 
-The 1.5B distilled model is the limit, not the loop. The next experiment is constrained decoding
-(`LLAMA_CONSTRAIN_JSON`), measured against this same golden set. Raw per-run data is in
-`evals/results/`.
+The 1.5B distilled model is the limit, not the loop. Raw per-run data is in `evals/results/`.
+
+### Experiment: JSON-constrained decoding
+
+The same 20 runs with llama-server constrained to each agent's JSON schema (`--constrain-json`,
+`LLAMA_CONSTRAIN_JSON`). Raw data and report: `evals/results/20260926T135847Z.*`.
+
+| | Baseline | Constrained |
+|---|---|---|
+| Task success | 0/16 | 0/16 |
+| Failed with no valid JSON | 11 | **0** |
+| Valid JSON, wrong content | 3 (2 wrong shape, 1 bad path) | 15 (10 invalid stand-in paths, 5 writes to the sandbox directory itself) |
+| Failed review/tests | 2 | 1 |
+| Tokens per implementation run | ~4,020 | ~1,220 |
+| Median whole-task wall time | ~55s | ~6s |
+| Proposed test files with no `test_` function | 3/4 | 11/11 |
+
+The constraint removes the format failure entirely and makes failure roughly 9x cheaper and faster,
+but it does not produce a single success: the model now fills a well-formed object with content that
+is unusable (paths such as `/path/to/test1`, which it invents; the prompt itself only contains
+`"..."`), and every test file it does write contains no test. Constrained decoding also removes the
+model's `<think>` reasoning, which is a likely part of why the content got worse. Sample of 16 with
+wide intervals; a difference this stark (11 to 0 format failures) is not noise, a difference between
+0/16 and 0/16 successes is no difference at all. Next lever: the prompt (relative-path examples, a
+concrete example test), not more decoding control.
+
