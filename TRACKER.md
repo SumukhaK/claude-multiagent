@@ -166,3 +166,8 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   envelope + `Plan`/`CodeChangeReport`/`ToolExecutionReport` discriminated-union payloads, with a
   validator enforcing the `error` field is set if-and-only-if `status == "error"`. 11 new tests,
   all passing.
+- 2026-09-26 — Second Phase 2 component landed on `feat/observability-tracing`:
+  `traced_call`/`FailureLog`/`configure_tracing` in `multiagent/observability/tracing.py`
+  (OpenTelemetry spans + a structured JSON failure log for every agent/tool call). Console
+  exporter only for now — no cloud account needed. 6 new tests using `InMemorySpanExporter`, all
+  passing. New dependencies: `opentelemetry-api`, `opentelemetry-sdk`.
