@@ -406,7 +406,7 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   (optional `json_schema` on `LLMClient.generate`, `constrain_json` on Planner/Coder,
   `LLAMA_CONSTRAIN_JSON`, `--constrain-json` on the eval script; `CodeChangeProposal.test_files` now
   demands one item in the schema itself). Verified against the real server. A/B on the same 20 runs:
-  no-JSON failures 11 -> 0, successes 0 -> 0, ~9x fewer tokens and ~9x faster, every proposed test
+  no-JSON failures 11 -> 0, successes 0 -> 0, ~3.3x fewer tokens and ~9x faster (first written as "9x fewer tokens", wrong), every proposed test
   file empty of tests. Also found while comparing: the baseline failure breakdown had been counted by
   agent instead of by error text (fixed in PR #27). Flag stays off. Next: prompt improvements, then
   tracing wiring.
@@ -421,3 +421,11 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   server-side chat-template option (`LLAMA_USE_CHAT_TEMPLATE`, default off). A first reading ("the
   template fixes it") was wrong: a 2x2 showed the template and a reworded prompt are only useful
   together; think-then-constrain was refuted. The prompt rewrite follows on its own branch.
+- 2026-09-26 — Results write-up (`feat/coder-prompt-rewrite`). Six configurations on the same 20 runs
+  (REQUIREMENTS §11.6): **0/16 successes in every one**, one false success in the best. The best
+  configuration (constrained + words prompt + chat template) gets every run to the test stage; the
+  1.5B model's code and tests fail. Worked example removed (harmful), Coder prompt made dependent on
+  decoding mode (words when constrained, explicit shape when not), because the words-only prompt
+  made an unconstrained model invent JSON shapes. Four corrections to earlier claims recorded in
+  §11.6. Not done: keeping failing proposals to explain the false success; Planner prompt still
+  has a `"..."` shape line.
