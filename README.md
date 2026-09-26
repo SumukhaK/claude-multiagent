@@ -1,8 +1,10 @@
 # Claude Multiagent
 
 A local-first, multi-agent AI coding assistant: a Planner, a Coder, and a Tool agent cooperate
-under a strict orchestrator loop to turn a plain-language coding/debugging request into a
-tested, reviewed, merged pull request — running entirely on local hardware, no paid APIs.
+under a strict orchestrator loop, aiming to turn a plain-language coding/debugging request into a
+tested, reviewed pull request — running entirely on local hardware, no paid APIs. How well a
+1.5B-parameter model on a 4GB GPU actually manages that is measured, not assumed: see
+**Evaluation** at the bottom, and the limitations in [REQUIREMENTS.md §8](REQUIREMENTS.md#8-known-limitations-measured-not-assumed).
 
 - Technical requirements & design decisions: [REQUIREMENTS.md](REQUIREMENTS.md)
 - Plain-English explanation: [NON_TECHNICAL.md](NON_TECHNICAL.md)
@@ -14,46 +16,58 @@ tested, reviewed, merged pull request — running entirely on local hardware, no
 ```mermaid
 flowchart TB
     U[User]
+    GIN["Input guardrail<br/>refuses secret-fishing, malware requests,<br/>and input that contains a secret"]
+    U -->|goal and clarification answers| GIN
+    GIN -.->|refused| U
 
-    subgraph Orchestrator["Orchestrator (LangGraph state machine)"]
-        O[plan → execute step → review step loop<br/>retry cap + hard step budget<br/>no LLM calls of its own]
+    subgraph Orchestrator["Orchestrator (LangGraph state machine, no LLM of its own)"]
+        O["plan, implement step, review step<br/>bounded retries per failure<br/>hard step budget"]
     end
-
-    U -->|task request| O
+    GIN -->|allowed| O
     O -->|clarifying questions| U
-    O -->|failure report / final result| U
+    O -->|final result or escalation report| U
 
-    O -->|"1. request plan"| P[Planning Agent<br/>read-only code access]
+    O -->|"1. request plan"| P["Planning Agent<br/>LLM only, no tools"]
     P -->|structured JSON plan| O
-
-    O -->|"2. one step at a time"| C[Coding Agent<br/>sandboxed file read/write + test runner]
-    C -->|tests + code diff| O
+    O -->|"2. one step at a time"| C["Coding Agent<br/>writable filesystem + pytest runner"]
+    C -->|code report + test result| O
     O -->|"3. review step"| P
+    O -->|"4. commit, push, PR"| T["Tool Agent<br/>allowlisted git/gh, adb only"]
+    T -->|result or failure| O
 
-    O -->|"4. git / PR ops"| T[Tool Agent<br/>git + gh CLI, allowlisted]
-    T -->|result / failure| O
-
-    subgraph Local Inference
-        LS["llama-server (llama.cpp)<br/>DeepSeek-R1-Distill-Qwen-1.5B<br/>GPU-offloaded, flash-attn, quantized KV cache"]
+    subgraph LLMs["Local inference"]
+        LS["llama-server (llama.cpp)<br/>DeepSeek-R1-Distill-Qwen-1.5B<br/>GPU-offloaded, flash attention, quantized KV cache"]
         OL["Ollama: qwen2.5:7b-instruct<br/>CPU-only"]
     end
-    P -.model calls.-> LS
-    C -.model calls.-> LS
-    T -.model calls.-> OL
+    P -.-> LS
+    C -.-> LS
+    T -.-> OL
 
-    subgraph "Cross-cutting"
-        MEM[mem0<br/>local memory]
-        OTEL[OpenTelemetry<br/>logs + traces]
-        GRD[Guardrails<br/>input filter + tool-output isolation]
-        CTX[ContextManager<br/>per-agent token budget + compaction]
+    subgraph Boundaries["Enforced on the tools (Phase 9)"]
+        PP["Protected paths<br/>.env, .git/, keys, memory store"]
+        SS["Secret scanner<br/>commits, PR text, memory"]
+        ENV["Scrubbed environment<br/>for model-written tests"]
     end
+    C --- PP
+    C --- ENV
+    T --- SS
+
+    MEM["mem0 memory<br/>verified outcomes only<br/>optional, off by default"]
+    OTEL["OpenTelemetry tracing + failure log"]
+    CTX["ContextManager<br/>token budget + compaction"]
     O --- MEM
-    O --- OTEL
-    O --- GRD
-    P --- CTX
-    C --- CTX
-    T --- CTX
+    O -.- OTEL
+    O -.- CTX
+
+    classDef notwired stroke:#c00,stroke-dasharray: 5 5
+    class OTEL,CTX notwired
 ```
+
+Solid boxes are wired into the running system. **Red dashed boxes are built and unit-tested but
+not yet connected to it** — tracing and context budgeting exist as modules, but nothing calls
+them (verified by searching the code; see
+[REQUIREMENTS.md §12](REQUIREMENTS.md#12-wiring-audit-what-is-built-versus-what-runs)). Memory is
+wired as an optional injection but no entrypoint or evaluation run enables it.
 
 **Design principles:** least-privilege tool access per agent, structured JSON contracts between
 agents (never free text), tool output is always treated as data (never as instructions), bounded
@@ -74,7 +88,7 @@ is chosen specifically for this ceiling — see
 | Local LLM serving (Planner/Coder) | [llama.cpp](https://github.com/ggml-org/llama.cpp) (`llama-server`) |
 | Local LLM serving (Tool agent) | [Ollama](https://ollama.com/) (`qwen2.5:7b-instruct`, CPU-only) |
 | Observability | [OpenTelemetry](https://opentelemetry.io/) |
-| Evaluation (optional) | LangSmith / OpenEval (free tier, off by default) |
+| Evaluation | In-repo harness: golden tasks with hidden acceptance tests, Wilson intervals (LangSmith/OpenEval are **not** used; LangSmith is only present as a LangGraph dependency and disabled) |
 | Memory | [mem0](https://github.com/mem0ai/mem0) (local backend) |
 | Validation / contracts | [pydantic](https://docs.pydantic.dev/) |
 | Config | [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) |

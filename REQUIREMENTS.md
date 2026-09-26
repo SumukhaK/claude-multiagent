@@ -488,3 +488,46 @@ Both attempts stalled at the same run, which is what exposed it. Fixed in PR #24
 `LLAMA_LOG_PATH`), verified with 300 real completions; the published run is the third attempt and
 its server log (93KB) is larger than the old buffer. Lesson: an evaluation harness is also a stress
 test of the code it drives, and `/health` ok does not mean the server is serving.
+
+## 12. Wiring audit: what is built versus what runs
+
+Phase 9's audit found the input guardrail had been built and tested but called nowhere. Phase 11
+repeated the check for every component, by searching the code for callers (not by trusting the
+design documents). Result:
+
+| Component | Built and tested | On the running path? |
+|---|---|---|
+| Orchestrator, Planner, Coder, Tool agents | yes | yes |
+| Input guardrail (`check_user_input`) | yes | yes, since Phase 9 (`Orchestrator.run` / `resume`) |
+| Protected paths, secret scanner, scrubbed test environment | yes | yes, through the tools that use them |
+| Memory (`MemoryStore`) | yes | only as an optional injection — no entrypoint and no evaluation run enables it (verified once, by hand, across two tasks) |
+| Hardware test runner | yes | `ToolAgent.run_hardware_tests` exists, but the orchestrator never calls it |
+| Metering and the evaluation harness | yes | evaluation runs only |
+| **OpenTelemetry tracing and the failure log** (`traced_call`, `FailureLog`, `configure_tracing`) | yes | **no — nothing calls them** |
+| **Context budgeting** (`ContextManager.maybe_compact`, the budget helpers) | yes | **no — nothing calls them** |
+| **A user-facing entrypoint** | — | **none exists**: only benchmark, verification and evaluation scripts |
+| LangSmith / OpenEval | not built | not used (LangSmith is only present as a disabled LangGraph dependency) |
+
+Consequences, stated plainly:
+
+- CLAUDE.md §4 requires that every agent and tool call is logged and traced, and that context is a
+  budgeted resource that is compacted before overflow. **Neither is true of the running system.**
+  The modules exist and are unit-tested; nothing connects them. A run leaves no trace and no
+  failure log.
+- Context is not enforced *anywhere*. The agents are stateless single-shot prompts, so there is no
+  history for `ContextManager` to compact — but nothing checks that a prompt (code context, recalled
+  memory, the step) plus the response reserve fits the ~4096-token slot either. An oversized
+  prompt would be truncated or rejected by llama-server rather than trimmed deliberately.
+- The original brief asked for "one layer that takes input from the user". The orchestrator
+  provides the loop, but there is no way to run it other than through Python or the scripts.
+
+What would close these (not scheduled; ordered by how cheaply they'd close a stated requirement):
+1. **Tracing:** a tracing proxy around the agents, as `MeteredAgent` already does for evaluation,
+   plus configuring the exporter and failure log at startup.
+2. **Prompt budget:** measure the composed prompt before each LLM call and shrink the code context
+   to fit, using the existing budget helpers.
+3. **An entrypoint:** a small CLI that builds the real stack, asks clarifying questions on the
+   terminal and prints the outcome.
+4. **Output format (the measured bottleneck, §11):** grammar/JSON-schema-constrained decoding in
+   llama-server, or the chat endpoint, so the model can't answer in prose when a JSON object is
+   required. This is the highest-value item and is now *measurable* with the evaluation harness.
