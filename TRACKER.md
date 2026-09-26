@@ -386,8 +386,9 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   the agents, and is consistent with the input guardrail. 38 new tests, all passing first time;
   503 total. Next: the runner, the real run, and publishing results.
 - 2026-09-26 — Phase 10 complete on `feat/eval-runner`: runner, report and real-system wiring, then
-  the first real run through the real stack. **0/16 implementation runs succeeded** (14 the model
-  returned no valid JSON, 2 failed review/tests); 4/4 adversarial refused; 0 legitimate tasks
+  the first real run through the real stack. **0/16 implementation runs succeeded** (11 no valid
+  JSON, 2 wrong-shaped JSON, 1 path outside the sandbox, 2 failed review/tests; first recorded as
+  "14 no valid JSON", corrected after recounting by error text); 4/4 adversarial refused; 0 legitimate tasks
   wrongly refused. Two earlier attempts were discarded after the evaluation exposed a real bug:
   the llama-server wrapper's unread stdout pipe froze the server after ~14 runs (fixed separately in
   PR #24, verified with 300 real completions). Results published at the bottom of the README with

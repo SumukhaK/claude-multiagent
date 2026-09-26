@@ -58,7 +58,8 @@ contradicted a claim in CLAUDE.md, now corrected.
 ## Phase 10 — Evaluation · #22 #23 #25 (+ #24)
 Wilson intervals, metering, ten golden tasks with hidden acceptance tests validated by real pytest
 runs, a runner, a report, and a real-model run published in the README. *Result:* 0 of 16
-implementation runs succeeded; 14 failed because the model returned no valid JSON. Safety behaviour
+implementation runs succeeded; 11 failed with no valid JSON and 2 more with wrong-shaped JSON
+(first published as 14 no-JSON; corrected after recounting by error text). Safety behaviour
 held (clean escalations, all adversarial requests refused). *Learned:* the evaluation itself found
 a bug in the llama-server wrapper (an unread stdout pipe froze the server after ~14 runs while
 `/health` still said ok), fixed in #24; two attempts were discarded before the third was published.
