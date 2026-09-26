@@ -328,4 +328,4 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   `tests/orchestrator/fakes.py` first (the test file was heading past the ~400-line guideline),
   re-verifying the 11 existing tests unchanged. Verified with a real `MemoryStore` across two
   consecutive tasks: task 2, worded differently, received task 1's step summary and completion
-  record. 11 new tests, 238 passing overall. **Phase 8 complete.**
+  record. 12 new tests, 239 passing overall. **Phase 8 complete.**

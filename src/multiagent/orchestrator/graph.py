@@ -247,7 +247,7 @@ def build_orchestrator_graph(
     def done_node(state: OrchestratorState) -> dict:
         remember(
             f"Completed task: {state['goal']} (branch {state['branch_name']}, "
-            f"{len(state['step_reports'])} step reports)",
+            f"{len(state['plan'].steps)} steps)",
             "task",
         )
         return {"status": "done"}

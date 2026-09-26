@@ -145,3 +145,13 @@ def test_an_escalated_task_is_not_remembered_as_completed():
 
     assert result["status"] == "failed"
     assert "task" not in memory.kinds()
+
+
+def test_the_completed_task_memory_counts_plan_steps_not_retry_attempts():
+    memory = FakeMemory()
+    coder = FakeCoderAgent([coder_ok(1, tests_passed=False), coder_ok(1, tests_passed=True)])
+
+    build(memory, coder=coder)
+
+    task = next(text for kind, text in memory.remembered if kind == "task")
+    assert "1 steps" in task  # one plan step, even though the coder was called twice
