@@ -637,6 +637,42 @@ the gap was real but was not what was holding results at zero: the model, not th
 still the limit. A design note: the Coder gains no new tool access, only more of the user's own
 task text, which already passed the input guardrail.
 
+### 11.8 The Planner prompt: tested, rejected, left unchanged
+
+The Coder prompt improved when its `"..."` shape line was replaced by rules in words (11.5, 11.6),
+and the Planner prompt has a similar shape line, so the same rewording was the obvious next step.
+It was measured before being written, on non-golden goals (4 goals x 6 samples = 24 per variant),
+real `PlannerAgent`, chat template, constrained decoding:
+
+| Variant | Parsed | `goal` is a placeholder | Single-step plans | Steps per plan | Names the goal's file |
+|---|---|---|---|---|---|
+| Current prompt (shape line) | 23/24 | 2 | 9 | 2.9 | 3 |
+| Same, run again | 24/24 | 2 | 9 | 3.2 | 2 |
+| Format in words only | 23/24 | 0 | **0** | **5.8** | 1 |
+| Words + "a small task is ONE step" + "name the file" | 24/24 | 0 | 1 | 4.6 | 2 |
+
+**The rewording makes the Planner worse, so it was not made.** The one defect it fixes, the model
+copying `<restate the goal>` into `goal`, is harmless: nothing in the orchestrator or agents reads
+`plan.goal` (the goal comes from state). The current prompt never produced a `"..."` step
+description or edge-case list in 24 samples. What the shape line does, unintentionally, is show a
+plan with **one** step, and the model follows it; removing the line roughly doubled the number of
+steps, and an explicit "one step for a small task" rule barely helped (1 of 24).
+
+**Over-splitting is the real Planner defect.** In the saved constrained golden run (row 7 of
+11.6) the 16 parsed plans average 3.4 steps, only 4 are a single step, and some run to 7. Each
+step is a separate Coder call that must add its own test file and is reviewed separately, so a
+small task cut into micro-steps ("sum the list", then "divide by the length") gives the 1.5B model
+more chances to fail. Whether that materially lowers the success rate is **not measured**.
+
+**A grammar-enforced cap is feasible, and untested for success.** Adding `maxItems` to the plan's
+`steps` in the JSON schema is honoured by llama-server: with a cap of 2, the longest plan fell
+from 6 to 2 steps and the mean from 2.75 to 1.71, with nothing unparseable (a probe of 24 samples
+per arm, feasibility only). It is the same lesson as the Coder's `test_files` rule: put a rule
+where the grammar can enforce it, not in prose the model may ignore. Given how the Coder rows
+behaved, fewer steps is unlikely by itself to turn any 0/16 into a success, so it is a candidate
+experiment, not a recommendation. The review prompt has a similar `"feedback": "..."` line and was
+not measured either; the review gate leans on `tests_passed`, so it was left alone.
+
 ## 12. Wiring audit: what is built versus what runs
 
 Phase 9's audit found the input guardrail had been built and tested but called nowhere. Phase 11
