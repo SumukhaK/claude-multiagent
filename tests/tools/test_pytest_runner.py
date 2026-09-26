@@ -69,8 +69,9 @@ def test_run_rejects_a_target_outside_the_sandbox_without_launching_a_subprocess
 
 
 def test_run_handles_a_timeout_without_raising(tmp_path, monkeypatch):
-    def fake_run(*_args, **_kwargs):
-        raise subprocess.TimeoutExpired(cmd=["pytest"], timeout=5, output="partial stdout", stderr="partial stderr")
+    def fake_run(*_args, **kwargs):
+        kwargs["stdout"].write(b"partial stdout")  # what the child managed to write before the kill
+        raise subprocess.TimeoutExpired(cmd=["pytest"], timeout=5)
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     runner = SandboxedPytestRunner(tmp_path, timeout_seconds=5)
@@ -97,3 +98,36 @@ def test_run_invokes_pytest_as_a_module_with_the_current_interpreter(tmp_path, m
 
     assert captured["args"][:3] == [sys.executable, "-m", "pytest"]
     assert captured["cwd"] == tmp_path.resolve()
+
+
+def test_model_written_tests_cannot_read_the_parents_secret_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("DEMO_API_TOKEN", "should-not-be-visible")
+    monkeypatch.setenv("MY_SETTING", "ordinary-value")
+    (tmp_path / "test_env.py").write_text(
+        "import os\n"
+        "def test_env():\n"
+        "    assert 'DEMO_API_TOKEN' not in os.environ\n"
+        "    assert os.environ.get('MY_SETTING') == 'ordinary-value'\n",
+        encoding="utf-8",
+    )
+
+    result = SandboxedPytestRunner(tmp_path).run()
+
+    assert result.passed is True, result.output
+
+
+def test_huge_output_is_truncated_to_its_tail_so_the_summary_survives(tmp_path):
+    (tmp_path / "test_noisy.py").write_text(
+        "def test_noisy():\n"
+        "    for i in range(50000):\n"
+        "        print('noise line', i)\n"
+        "    assert False\n",
+        encoding="utf-8",
+    )
+
+    result = SandboxedPytestRunner(tmp_path, max_output_bytes=2000).run()
+
+    assert result.passed is False
+    assert len(result.output) < 2400  # cap plus the truncation marker
+    assert "truncated" in result.output
+    assert "1 failed" in result.output  # the tail, where pytest's summary lives, is what's kept

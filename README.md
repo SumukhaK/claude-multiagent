@@ -129,6 +129,12 @@ note per phase as it lands.
   orchestrator: agents get relevant recalled context, and only *verified* outcomes (approved
   steps, clarification answers, completed tasks) are remembered. Recall ~0.02s, +4 MiB GPU. See
   [REQUIREMENTS.md §9](REQUIREMENTS.md#9-memory-layer-phase-8).
+- **Phase 9 — Security hardening**: an audit of what was actually true, then fixes verified against
+  the real system — protected paths (the Planner could read `.env`), outbound secret scanning,
+  `git add` hardening, the input guardrail actually wired in (it was called nowhere) and rebuilt
+  against a measured corpus, and a scrubbed environment for model-written tests. The honest
+  headline is in [REQUIREMENTS.md §10.1](REQUIREMENTS.md#101-threat-model-what-is-mitigated-and-what-is-not):
+  the Coder still executes model-written code with the developer's full OS privileges.
 
 ## Running locally
 

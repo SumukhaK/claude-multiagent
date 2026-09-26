@@ -361,3 +361,50 @@ and fixes, each verified against the real system, are recorded here as they land
   legitimately contain such text). It costs roughly 35 tokens per prompt of an already-tight
   ~4096-token slot, and whether the wrapper actually changes a 1.5B model's behaviour is
   *unmeasured*; it is defence in depth, not a demonstrated fix.
+- **Subprocess hardening.** Verified live first: a model-written test could read every secret in
+  the parent's environment (`os.environ` showed both a demo API token and `GITHUB_TOKEN`). The
+  pytest and hardware runners now pass a scrubbed environment (`subprocess_env.py`: variables whose
+  names contain KEY/TOKEN/SECRET/PASSWORD/PASSWD/CREDENTIAL/AUTH/PRIVATE are dropped by name; a
+  denylist rather than an allowlist because it is far less likely to break the interpreter); the
+  same probe now prints `None None`. Pytest output goes to a temp file of which only the last 20 KB
+  is read back, so a test printing gigabytes can't balloon this process's memory and pytest's
+  summary (at the tail) survives. `GitTools` is deliberately *not* scrubbed — `git`/`gh` need
+  their credentials.
+- **Tool-allowlist audit result.** `HardwareTestRunner.run(command=...)` checked only that `adb`
+  existed, then ran whatever argv it was given — an arbitrary-command primitive inside the Tool
+  agent, contradicting the "fixed operations, no generic passthrough" principle the other tools
+  follow. Nothing called it with model input, but the API allowed it; it now refuses anything
+  whose first element isn't exactly `adb`.
+
+### 10.1 Threat model: what is mitigated, and what is not
+
+Verified by reading the code: the Planner has no tools of its own (the orchestrator supplies its
+context); the Coder has `WritableFilesystem` and `SandboxedPytestRunner`; the Tool agent has
+`GitTools` and `HardwareTestRunner`; the orchestrator has no tools and no LLM.
+
+**Mitigated (each with a test):** path escape and access to protected files (`.env`, `.git/`,
+keys, the memory store) through any filesystem tool; writes to git hooks and CI workflows;
+oversized writes; partial writes from a mixed proposal; staging of directories, protected files or
+files containing a secret; `git add` option injection; secrets in commit messages, PR text and
+memory; secret-fishing and malware requests at the input boundary (to the measured extent below);
+secrets in the environment reaching model-written tests; unbounded test output; arbitrary commands
+through the hardware runner.
+
+**Not mitigated — read this before trusting the system with anything that matters:**
+
+1. **CLAUDE.md §4 says no agent gets write, git and network access at once. In practice the Coder
+   effectively does:** it writes code and then *executes* it via pytest, and that code runs with
+   the developer's full OS privileges — it can read any file on the machine (the path policy only
+   restricts *our tools*, not code the tests run), open network connections, and spawn processes.
+   The environment scrub and output cap reduce the blast radius; they are not isolation. Real
+   isolation needs a container, VM or Windows Sandbox with no network — out of scope for a
+   laptop-local portfolio project, but the honest answer to "is it safe to point at code you don't
+   control?" is **no**.
+2. On timeout Windows kills the pytest process but not grandchildren it spawned.
+3. The temp file bounding test output is limited only by the timeout, not by disk size.
+4. The input guardrail is a keyword heuristic: on a second, not-blind set it blocked 7/12 attacks
+   and refused 1/12 ordinary requests (six pinned failures in `test_input_filter_limits.py`).
+   The secret scanner is pattern-based: novel or obfuscated secrets pass.
+5. Whether wrapping context "as data" changes a 1.5B model's behaviour is unmeasured.
+6. Memory can retain a wrong-but-passing step (the review gate is weak, §8).
+7. `gh` acts as the developer's authenticated GitHub account; a PR is a real public action.

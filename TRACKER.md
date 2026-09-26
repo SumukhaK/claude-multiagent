@@ -146,7 +146,7 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 | 6 | Tool agent: git/gh wrapper tools (branch/commit/push/PR), allowlisted commands only, hardware/emulator test runner (best-effort/stretch), retry + timeout + circuit-breaker logic | ✅ |
 | 7 | Orchestrator: LangGraph state machine wiring all three agents, human-in-the-loop clarification interrupt, retry/escalation policy, hard step-budget circuit breaker, end-to-end test | ✅ |
 | 8 | Memory layer: local mem0 (local embeddings via `nomic-embed-text`, local vector store), wired into Planner + Coder | ✅ |
-| 9 | Guardrails & security hardening pass: expand injection/secret-exfiltration filters, sandbox/tool-allowlist audit | 🔶 |
+| 9 | Guardrails & security hardening pass: expand injection/secret-exfiltration filters, sandbox/tool-allowlist audit | ✅ |
 | 10 | Evaluation harness: golden task set, metrics (latency, token usage, tool success rate, hallucination rate + recovery, cost proxy), results appended to `README.md` | ⬜ |
 | 11 | Polish: finalize architecture diagram, changelog, demo | ⬜ |
 
@@ -361,3 +361,13 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   (invisible, and lint-clean), caught only because the output showed the word boundaries missing —
   now checked for control characters. 75 new tests, 421 passing (+6 expected failures).
   Remaining: subprocess hardening and the written audit.
+- 2026-09-26 — Fourth and final Phase 9 component landed on `feat/subprocess-hardening`. Proved
+  the gap first: a model-written test could read every secret in the parent's environment (a demo
+  API token and `GITHUB_TOKEN` both printed); the same probe now prints `None None`. The pytest and
+  hardware runners get a scrubbed environment; pytest output is captured to a temp file and only the
+  tail read back. The tool-allowlist audit found `HardwareTestRunner.run(command=...)` would run any
+  argv once `adb` merely existed — now adb-only. The written audit (REQUIREMENTS.md §10.1) records
+  what is mitigated and what is not, including that CLAUDE.md §4's "no agent gets write + git +
+  network" is not true in practice for the Coder, whose pytest runs execute model-written code with
+  the developer's full privileges. 26 new tests, 447 passing (+6 documented expected failures).
+  **Phase 9 complete.**
