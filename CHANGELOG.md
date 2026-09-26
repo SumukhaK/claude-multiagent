@@ -70,3 +70,12 @@ Diagram redrawn to distinguish what is wired from what is merely built; README c
 component-by-component wiring audit (REQUIREMENTS.md §12) that found tracing and context budgeting
 built but unconnected and no user-facing entrypoint. *Learned:* "built and unit-tested" is not the
 same as "part of the running system" — the same lesson Phase 9 taught, one layer wider.
+
+## After Phase 11 — measured experiments · #24 #27 #28 #29 #30 (+ prompt rewrite)
+Fixed a server-hang bug the evaluation exposed (#24), corrected the failure breakdown (#27), added
+optional JSON-constrained decoding (#28), wired tracing (#29) and an optional chat template (#30),
+then measured six configurations against the golden set. *Result:* 0 of 16 in every one, but the
+failure moved from "no valid JSON" to "the model's tests do not pass". *Learned:* several of my own
+readings were wrong and were corrected (the failure breakdown, where the placeholder paths came
+from, the template alone being the lever, the token saving); a worked example hurts and a
+placeholder in a prompt is copied; the model, not the plumbing, is now the limit.

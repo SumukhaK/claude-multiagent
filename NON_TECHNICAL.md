@@ -51,17 +51,17 @@ try, and how often it made something up and caught its own mistake).
 ## Where things stand today
 
 Everything above is built and tested, and the pieces have been run together on real local models.
-The honest result of the first real test: **the system did not complete any of the small coding
-tasks it was given** (0 of 16). The workers' *process* held up: every failure was reported cleanly
-rather than hidden or faked, and every request for something harmful was refused. The problem is
-the small AI model, which usually answers in ordinary sentences when the system needs a strictly
-formatted reply, so the next worker never receives instructions it can read. Forcing
-the model to answer in the required format was tried: the format problem disappeared, but the
-tasks still were not completed because the content of the answers was poor. Clearer instructions
-in the prompts are being measured next. A detailed activity log (a timeline of every step each
-worker took, and every failure) now exists for test runs. The "context budget" tracker is built but
-not yet switched on, and there is no simple command-line front door yet; the project's technical
-notes list exactly what is and is not connected.
+The honest result: **the system has not completed any of the small coding tasks it was given**
+(0 of 16, in six different configurations). What improved is *how* it fails. At first the small AI
+model usually answered in ordinary sentences when the system needed a strictly formatted reply, so
+the next worker never got instructions it could read. After forcing the format, using the model's
+own conversation format and rewording the instructions, every attempt now produces real code and
+real tests, but they do not pass. Several of my own explanations along the way turned out to be
+wrong and were corrected in the notes. The limit now looks like the size of the model, not the
+plumbing. Every failure is reported cleanly, every harmful request is refused, and a detailed
+activity log exists for test runs. A "context budget" tracker is built but not switched on, and
+there is no simple command-line front door yet; the technical notes list exactly what is and is
+not connected.
 
 ## Who this is for
 

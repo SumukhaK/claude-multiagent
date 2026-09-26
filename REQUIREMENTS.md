@@ -491,6 +491,102 @@ Both attempts stalled at the same run, which is what exposed it. Fixed in PR #24
 its server log (93KB) is larger than the old buffer. Lesson: an evaluation harness is also a stress
 test of the code it drives, and `/health` ok does not mean the server is serving.
 
+### 11.4 Experiment: JSON-constrained decoding
+
+`LLAMA_CONSTRAIN_JSON` (default off) sends each Planner/Coder call's pydantic schema to llama-server
+as `json_schema` (verified against the real server, including the nested `$defs`). One schema
+change was needed to make it meaningful: `CodeChangeProposal.test_files` is now required with
+`min_length=1`, because a grammar built from the schema cannot see a Python validator (TDD was
+previously enforced only after decoding).
+
+Same 20 runs, classified by recorded error text: **no-JSON failures 11 -> 0; successes 0/16 -> 0/16;
+tokens per implementation run ~4,020 -> ~1,220; median wall time ~55s -> ~6s**. The 16 failures
+became 15 well-formed-but-unusable Coder proposals (10 invented stand-in paths such as
+`/path/to/test1`, which the sandbox rejects; 5 writes to the sandbox directory itself) and 1
+failed review. All 11 test files the Coder proposed contained no `test_` function (baseline 3/4).
+(Corrected later, see 11.6: the invented paths were the model's own, but the `"..."` file bodies
+*were* copied from the prompt's shape line, and the "next experiment" turned out to be different
+from the one named here.)
+
+### 11.5 Chat template (`LLAMA_USE_CHAT_TEMPLATE`, default off)
+
+`LlamaServerClient(use_chat_template=True)` first asks llama-server to wrap the prompt in the loaded
+model's own chat format (`/apply-template`), then completes it. Until now every prompt went to
+`/completion` as raw text, which a chat-tuned model was never trained on. The server knows the
+format, so nothing model-specific is hardcoded; a failing template request raises rather than
+silently falling back to a raw prompt.
+
+What was measured (non-golden tasks, real `CoderAgent` with real files and pytest, constrained
+decoding, 16 samples per cell; small, so read as direction not proof). Test files containing a
+`test_` function:
+
+| | raw | chat template |
+|---|---|---|
+| current prompt (shape line with `"..."`) | 0/16 | 1/16 |
+| reworded prompt (rules in words, no `"..."`) | 1/28 | 19/28 (pooled from two runs) |
+
+Two conclusions, one of them a correction. (1) **The template alone does nothing** with the current
+prompt: an earlier reading of "the template is the lever" was confounded by a simultaneous prompt
+change and was wrong on its own. (2) The two changes are **jointly** needed: the reworded prompt
+only works with the template, and the template only helps the reworded prompt. The server's
+template ends with `<think>` plus a newline; keeping or stripping it made no measurable difference (9 vs 8).
+Also refuted: letting the model think first and constraining only the final answer (0/12 tests
+passing, slower). The prompt rewrite lands separately.
+
+### 11.6 Six configurations, and what they actually show
+
+All runs use the same ten golden tasks x 2 repeats (16 implementation runs, 4 adversarial),
+classified by recorded error text. Raw data for every row is in `evals/results/`.
+
+| # | Configuration | Success | False success | Failures (of 16) | Tokens/run | Median wall | Runs that wrote a test file |
+|---|---|---|---|---|---|---|---|
+| 1 | Baseline: raw prompt, unconstrained | 0 | 0 | 11 no/invalid JSON, 2 wrong-shape JSON, 1 bad path, 2 review/tests | ~4,020 | 55s | 4 |
+| 2 | JSON-constrained, original prompt | 0 | 0 | 10 bad path, 5 write failed, 1 review/tests | ~1,220 | 6s | 11 |
+| 3 | Constrained + worked example (branch discarded) | 0 | 0 | 16 review/tests | ~1,680 | 9s | 16 (all 16 fake) |
+| 4 | Unconstrained + worked example (branch discarded) | 0 | 0 | 14 no/invalid JSON, 2 review/tests | ~4,520 | 83s | 2 |
+| 5 | **Constrained + words prompt + chat template** | 0 | **1** | 15 review/tests | ~1,740 | 16s | 16 (10 fake) |
+| 6 | Unconstrained + words prompt + chat template (prompt no longer selectable) | 0 | 0 | 11 wrong-shape JSON, 5 no/invalid JSON | ~4,540 | 57s | 0 |
+
+**Nothing solved a single task.** 0 of 16 in all six. No configuration is "better" at the thing
+that matters; each one moves *where* the failure happens. Read the table as a map of failure modes,
+not a leaderboard. What the map shows:
+
+1. **Constrained decoding removes the format failure** (11 -> 0 no-JSON) and makes failure
+   cheaper: about 3.3x fewer tokens and about 9x faster wall time. (An earlier note said "9x fewer
+   tokens": wrong, corrected.) It does not make the content right.
+2. **A worked example is harmful** for this model: copied in 17 of 24 non-golden samples, and in
+   every one of the 16 runs of row 3 at least one proposed test file contained no test. Removed.
+3. **A `"..."` in the shape line gets copied.** With constrained decoding any string is valid, so
+   the model returned `"..."` as file bodies. Describing the format in words fixed that, but only
+   **together with the chat template** (11.5), and only **when constrained**: row 6 shows the
+   words prompt without a grammar makes the model invent its own JSON structure (10 of the 16
+   failures were Coder wrong-shape JSON, 11 counting one Planner; for example `test_files` as a
+   dict). So the Coder prompt now
+   depends on the decoding mode.
+4. **Think-then-constrain was tested and refuted** (0/12 passing, slower).
+5. **The best configuration (row 5) gets every run to the test stage**: the model writes a test
+   file and an implementation, they are run, and they fail (15 of 16). The remaining limit is the
+   quality of what a 1.5B model writes, not plumbing, paths or format. That is the honest bottom
+   line for this hardware and model.
+6. **One false success** (`feature_add#1`, row 5): the orchestrator reported done, the Coder's own
+   tests passed and the reviewer approved, but the hidden acceptance test failed. I could not
+   inspect why, because the harness discards each sandbox. Recording the failing proposals is the
+   obvious next improvement to the harness; it is not done.
+
+**Corrections made during this investigation** (each fixed in the docs where it appeared): the
+baseline breakdown was first counted by agent instead of by error text (14 -> 11 no-JSON, PR #27);
+"the model echoes the prompt's placeholder paths" (the paths were its own; only the `"..."` bodies
+were copied); "the template is the lever" (confounded by a simultaneous prompt change, 11.5); and
+"9x fewer tokens" (3.3x).
+
+**How far to trust this.** Twenty runs per row, one pass each, non-deterministic: a small sample
+with wide intervals, so a difference of a few runs is noise. The prompt ablations behind rows 3 and
+5 used non-golden tasks (12-28 samples per cell), but the decision to drop the example and reword
+the prompt was also informed by the golden-run failure classes, so the golden set is not a clean
+held-out test of those changes. "Fake test" counts a run if *any* proposed test file lacks a
+`test_` function. The row 4 run overlapped with a full test-suite run on the same machine, so its
+timings are slightly inflated. None of this changes the headline: 0/16.
+
 ## 12. Wiring audit: what is built versus what runs
 
 Phase 9's audit found the input guardrail had been built and tested but called nowhere. Phase 11
@@ -533,26 +629,6 @@ What would close these (not scheduled; ordered by how cheaply they'd close a sta
    llama-server, or the chat endpoint, so the model can't answer in prose when a JSON object is
    required. This is the highest-value item and is now *measurable* with the evaluation harness.
 
-### 11.4 Experiment: JSON-constrained decoding
-
-`LLAMA_CONSTRAIN_JSON` (default off) sends each Planner/Coder call's pydantic schema to llama-server
-as `json_schema` (verified against the real server, including the nested `$defs`). One schema
-change was needed to make it meaningful: `CodeChangeProposal.test_files` is now required with
-`min_length=1`, because a grammar built from the schema cannot see a Python validator (TDD was
-previously enforced only after decoding).
-
-Same 20 runs, classified by recorded error text: **no-JSON failures 11 -> 0; successes 0/16 -> 0/16;
-tokens per implementation run ~4,020 -> ~1,220; median wall time ~55s -> ~6s**. The 16 failures
-became 15 well-formed-but-unusable Coder proposals (10 invented stand-in paths such as
-`/path/to/test1`, which the sandbox rejects; 5 writes to the sandbox directory itself) and 1
-failed review. All 11 test files the Coder proposed contained no `test_` function (baseline 3/4).
-The prompt contains only `"..."` placeholders, so these are the model's own stand-ins, not copied
-text. Constrained decoding also drops the `<think>` block. Conclusion: guaranteeing the *shape* was
-necessary but not sufficient; the content is now the bottleneck, so the next experiment is the
-prompt (relative-path and concrete-test examples). The flag stays off by default: it makes failure
-cheaper, not success likelier, and the reasoning block it removes may matter once the content
-improves.
-
 ### 12.1 Tracing, wired (enhancement after the audit)
 
 `multiagent/observability/wrappers.py` adds `TracedLLMClient`, `TracedAgent` and `TracedTools`, which
@@ -574,28 +650,3 @@ default); failures go to `FAILURE_LOG_PATH`. Design decisions:
   parent/child nesting (LLM span inside agent span inside run), no prompt text in the output files.
 - **Where it applies:** `build_real_system` and therefore `scripts/run_eval.py`. The project has no
   user-facing entrypoint yet (§12), so there is nowhere else to attach it.
-
-### 11.5 Chat template (`LLAMA_USE_CHAT_TEMPLATE`, default off)
-
-`LlamaServerClient(use_chat_template=True)` first asks llama-server to wrap the prompt in the loaded
-model's own chat format (`/apply-template`), then completes it. Until now every prompt went to
-`/completion` as raw text, which a chat-tuned model was never trained on. The server knows the
-format, so nothing model-specific is hardcoded; a failing template request raises rather than
-silently falling back to a raw prompt.
-
-What was measured (non-golden tasks, real `CoderAgent` with real files and pytest, constrained
-decoding, 16 samples per cell; small, so read as direction not proof). Test files containing a
-`test_` function:
-
-| | raw | chat template |
-|---|---|---|
-| current prompt (shape line with `"..."`) | 0/16 | 1/16 |
-| reworded prompt (rules in words, no `"..."`) | 1/28 | 19/28 (pooled from two runs) |
-
-Two conclusions, one of them a correction. (1) **The template alone does nothing** with the current
-prompt: an earlier reading of "the template is the lever" was confounded by a simultaneous prompt
-change and was wrong on its own. (2) The two changes are **jointly** needed: the reworded prompt
-only works with the template, and the template only helps the reworded prompt. The server's
-template ends with `<think>` plus a newline; keeping or stripping it made no measurable difference (9 vs 8).
-Also refuted: letting the model think first and constraining only the final answer (0/12 tests
-passing, slower). The prompt rewrite lands separately.
