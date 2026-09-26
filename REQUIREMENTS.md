@@ -574,3 +574,28 @@ default); failures go to `FAILURE_LOG_PATH`. Design decisions:
   parent/child nesting (LLM span inside agent span inside run), no prompt text in the output files.
 - **Where it applies:** `build_real_system` and therefore `scripts/run_eval.py`. The project has no
   user-facing entrypoint yet (§12), so there is nowhere else to attach it.
+
+### 11.5 Chat template (`LLAMA_USE_CHAT_TEMPLATE`, default off)
+
+`LlamaServerClient(use_chat_template=True)` first asks llama-server to wrap the prompt in the loaded
+model's own chat format (`/apply-template`), then completes it. Until now every prompt went to
+`/completion` as raw text, which a chat-tuned model was never trained on. The server knows the
+format, so nothing model-specific is hardcoded; a failing template request raises rather than
+silently falling back to a raw prompt.
+
+What was measured (non-golden tasks, real `CoderAgent` with real files and pytest, constrained
+decoding, 16 samples per cell; small, so read as direction not proof). Test files containing a
+`test_` function:
+
+| | raw | chat template |
+|---|---|---|
+| current prompt (shape line with `"..."`) | 0/16 | 1/16 |
+| reworded prompt (rules in words, no `"..."`) | 1/28 | 19/28 (pooled from two runs) |
+
+Two conclusions, one of them a correction. (1) **The template alone does nothing** with the current
+prompt: an earlier reading of "the template is the lever" was confounded by a simultaneous prompt
+change and was wrong on its own. (2) The two changes are **jointly** needed: the reworded prompt
+only works with the template, and the template only helps the reworded prompt. The server's
+template ends with `<think>` plus a newline; keeping or stripping it made no measurable difference (9 vs 8).
+Also refuted: letting the model think first and constraining only the final answer (0/12 tests
+passing, slower). The prompt rewrite lands separately.
