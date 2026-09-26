@@ -66,9 +66,9 @@ class CoderAgent:
         self._max_tokens = max_tokens
         self._constrain_json = constrain_json
 
-    def implement_step(self, step: PlanStep, code_context: str = "") -> AgentMessage:
+    def implement_step(self, step: PlanStep, code_context: str = "", goal: str = "") -> AgentMessage:
         prompt = render_coder_prompt(
-            step=step, code_context=code_context, constrained=self._constrain_json
+            step=step, code_context=code_context, constrained=self._constrain_json, goal=goal
         )
 
         try:

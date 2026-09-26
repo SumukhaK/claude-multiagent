@@ -103,3 +103,24 @@ def test_the_constrained_prompt_describes_the_format_in_words_only():
     assert '"test_files": [{"path"' not in prompt
     assert "..." not in prompt
     assert "test_files holds the pytest test file" in prompt
+
+
+def test_the_prompt_shows_the_overall_goal_and_says_to_use_a_file_name_it_mentions():
+    for constrained in (False, True):
+        prompt = " ".join(
+            render_coder_prompt(
+                step=PlanStep(step_id=1, description="Define add"),
+                goal="Add add(a, b) in calc.py",
+                constrained=constrained,
+            ).split()
+        )
+
+        assert "Overall task" in prompt
+        assert "Add add(a, b) in calc.py" in prompt
+        assert "use that file name" in prompt
+
+
+def test_the_prompt_has_no_goal_section_when_no_goal_is_given():
+    prompt = render_coder_prompt(step=PlanStep(step_id=1, description="Define add"))
+
+    assert "Overall task" not in prompt

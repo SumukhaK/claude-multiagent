@@ -53,7 +53,7 @@ class PlannerAgentProtocol(Protocol):
 
 
 class CoderAgentProtocol(Protocol):
-    def implement_step(self, step: PlanStep, code_context: str = "") -> AgentMessage: ...
+    def implement_step(self, step: PlanStep, code_context: str = "", goal: str = "") -> AgentMessage: ...
 
 
 class MemoryProtocol(Protocol):
@@ -97,10 +97,15 @@ def build_orchestrator_graph(
         if memory is not None:
             memory.remember(text, kind)
 
-    def plan_node(state: OrchestratorState) -> dict:
+    def goal_for(state: OrchestratorState) -> str:
+        """The task as the agents see it: the goal plus any clarification the user gave."""
         goal = state["goal"]
         if state.get("clarification_answer"):
             goal = f"{goal}\n\nUser clarification: {state['clarification_answer']}"
+        return goal
+
+    def plan_node(state: OrchestratorState) -> dict:
+        goal = goal_for(state)
         message = planner_agent.create_plan(goal, context_for(state, goal))
         step_count = state["step_count"] + 1
         if message.status == MessageStatus.OK:
@@ -147,7 +152,9 @@ def build_orchestrator_graph(
     def implement_step_node(state: OrchestratorState) -> dict:
         assert state["plan"] is not None
         step = state["plan"].steps[state["current_step_index"]]
-        message = coder_agent.implement_step(step, context_for(state, step.description))
+        message = coder_agent.implement_step(
+            step, context_for(state, step.description), goal=goal_for(state)
+        )
         step_count = state["step_count"] + 1
         if message.status == MessageStatus.ERROR:
             return {
