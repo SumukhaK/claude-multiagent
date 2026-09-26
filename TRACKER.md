@@ -146,7 +146,7 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 | 6 | Tool agent: git/gh wrapper tools (branch/commit/push/PR), allowlisted commands only, hardware/emulator test runner (best-effort/stretch), retry + timeout + circuit-breaker logic | ✅ |
 | 7 | Orchestrator: LangGraph state machine wiring all three agents, human-in-the-loop clarification interrupt, retry/escalation policy, hard step-budget circuit breaker, end-to-end test | ✅ |
 | 8 | Memory layer: local mem0 (local embeddings via `nomic-embed-text`, local vector store), wired into Planner + Coder | ✅ |
-| 9 | Guardrails & security hardening pass: expand injection/secret-exfiltration filters, sandbox/tool-allowlist audit | ⬜ |
+| 9 | Guardrails & security hardening pass: expand injection/secret-exfiltration filters, sandbox/tool-allowlist audit | 🔶 |
 | 10 | Evaluation harness: golden task set, metrics (latency, token usage, tool success rate, hallucination rate + recovery, cost proxy), results appended to `README.md` | ⬜ |
 | 11 | Polish: finalize architecture diagram, changelog, demo | ⬜ |
 
@@ -329,3 +329,14 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   re-verifying the 11 existing tests unchanged. Verified with a real `MemoryStore` across two
   consecutive tasks: task 2, worded differently, received task 1's step summary and completion
   record. 12 new tests, 239 passing overall. **Phase 8 complete.**
+- 2026-09-26 — Phase 9 started with an audit of what is actually true (REQUIREMENTS.md §10).
+  Headline findings: `check_user_input` (Phase 2) is called nowhere in the running system; the
+  Planner could read the project's own `.env`; `git add` received unvalidated paths; writes had no
+  size cap. First component landed on `feat/protected-paths`: one shared protected-path policy
+  (`.env*`, `.git/`, keys, the memory store; `.git/` hooks and `.github/` workflows write-protected)
+  applied to every filesystem tool, checked on the *resolved* path after probing which spellings
+  actually bypass a naive check on this Windows machine (all of them did, incl. an NTFS stream and a
+  symlink). The Coder now validates every proposed write under the write policy plus a size cap before
+  writing any file. A failing test also caught that `resolve()` doesn't reject a NUL byte here. 69 new
+  tests, 308 passing overall. Remaining Phase 9 work: secret scanning, git path hardening, wiring the
+  input guardrail, subprocess hardening.

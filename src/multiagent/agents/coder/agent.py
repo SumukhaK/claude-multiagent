@@ -79,12 +79,15 @@ class CoderAgent:
         all_files = proposal.test_files + proposal.implementation_files
         try:
             for file_change in all_files:
-                self._filesystem.resolve_within_sandbox(file_change.path)
+                self._filesystem.validate_write(file_change.path, file_change.content)
         except SandboxViolationError as exc:
-            return self._error(f"coder proposed a file path outside the project sandbox: {exc}")
+            return self._error(f"coder proposed a write that violates the project sandbox policy: {exc}")
 
-        for file_change in all_files:
-            self._filesystem.write_file(file_change.path, file_change.content)
+        try:
+            for file_change in all_files:
+                self._filesystem.write_file(file_change.path, file_change.content)
+        except OSError as exc:
+            return self._error(f"coder could not write its proposed files: {exc}")
 
         test_result = self._test_runner.run()
 
