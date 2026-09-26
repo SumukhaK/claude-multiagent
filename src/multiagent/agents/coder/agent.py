@@ -67,7 +67,9 @@ class CoderAgent:
         self._constrain_json = constrain_json
 
     def implement_step(self, step: PlanStep, code_context: str = "") -> AgentMessage:
-        prompt = render_coder_prompt(step=step, code_context=code_context)
+        prompt = render_coder_prompt(
+            step=step, code_context=code_context, constrained=self._constrain_json
+        )
 
         try:
             if self._constrain_json:

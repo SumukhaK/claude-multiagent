@@ -242,3 +242,13 @@ def test_coder_constrains_the_response_to_the_code_change_proposal_schema(agent_
     agent_factory(llm, constrain_json=True).implement_step(_STEP)
 
     assert llm.last_json_schema == CodeChangeProposal.model_json_schema()
+
+
+def test_the_agent_picks_the_words_prompt_only_when_it_is_constrained(agent_factory):
+    plain, constrained = FakeLLMClient(text="not json"), FakeLLMClient(text="not json")
+
+    agent_factory(plain).implement_step(_STEP)
+    agent_factory(constrained, constrain_json=True).implement_step(_STEP)
+
+    assert '"test_files": [{"path"' in plain.last_prompt
+    assert '"test_files": [{"path"' not in constrained.last_prompt
