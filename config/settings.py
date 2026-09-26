@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     llama_kv_cache_type: str = "q8_0"
     llama_threads: int = 6
     llama_constrain_json: bool = False  # grammar-constrain Planner/Coder output to their JSON schemas
+    llama_log_path: str = "logs/llama-server.log"  # server stdout/stderr (gitignored)
 
     # Local LLM serving: Tool agent (Ollama, CPU-only)
     ollama_host: str = "http://127.0.0.1:11434"

@@ -434,10 +434,11 @@ the agents themselves are unchanged and the same wrappers work against fakes in 
 
 ### 11.1 The golden set (`multiagent/evaluation/golden_tasks.py`)
 
-Eleven tasks: five features, two bug fixes (the agents are shown the buggy code), one
-*deliberately underspecified* task that should provoke a clarifying question, two adversarial
-tasks that the input guardrail should refuse, and one benign security-flavoured feature ("password
-strength") that a naive keyword filter would wrongly refuse. Each implementation task pairs a
+Ten tasks: five features (one of them, "password strength", is benign but security-flavoured, so
+a naive keyword filter would wrongly refuse it), two bug fixes (the agents are shown the buggy
+code), one *deliberately underspecified* task that should provoke a clarifying question, and two
+adversarial tasks that the input guardrail should refuse. (An earlier revision of this document
+and PR #23 said "eleven" — the password-strength task had been counted twice.) Each implementation task pairs a
 plain-English goal naming its file and function with a **hidden acceptance test** that is written
 into the sandbox only after the run.
 
@@ -447,3 +448,86 @@ nothing is done** (an agent that does nothing can't score), is invisible to the 
 goal is consistent with the input guardrail. The tasks are simple on purpose — the evaluation
 measures the *system's* loop and honesty, not how hard a problem the model can solve — but that
 also means results say little about realistic software tasks.
+
+### 11.2 The harness
+
+`scripts/run_eval.py` starts llama-server (Planner/Coder) and uses Ollama (Tool agent), then runs
+every golden task `--repeats` times (interleaved) through the **real** agent classes, sandboxed
+filesystem and pytest runner, and **real git** against a throwaway repo with a *local bare remote*
+— never GitHub. Results stream to `evals/results/<timestamp>.jsonl` as each run finishes, so an
+interrupted run keeps what it has; the aggregate is rendered to `evals/results/<timestamp>.md`
+and published into a marked section of the README, replaced (not duplicated) on re-runs.
+
+Design choices worth knowing:
+- **The runner is model-agnostic.** `run_task` takes a factory building the orchestrator for a
+  sandbox and meter, so it is tested with fakes; the wiring of the real stack is smoke-tested with
+  fake LLM clients, including a scripted model that drives the real Planner, Coder, reviewer and
+  Tool agent (real files, real pytest, real commit and push to the local remote) to a genuine
+  success — so a failure in a real run is the model's, not the harness's.
+- **Pull-request creation is stubbed and labelled** (no GitHub remote to open one on), and
+  excluded from tool success so a stub can't inflate the rate.
+- **Memory is off** so tasks are independent of each other.
+- **A crash in one run is recorded as `crashed`** and never aborts the suite.
+- **Orchestrator budget for evaluation is 12 steps** (not the default 25), to bound a run that is
+  going nowhere; the model's per-response token cap is 1200.
+- **Not measured, on purpose:** marginal cost in dollars (local inference is $0 and no reference
+  price is invented) and any comparison against another model.
+
+### 11.3 First real run, and a bug the evaluation found
+
+20 runs (10 tasks x 2) against the real models: **0/16 implementation runs succeeded**, 4/4
+adversarial runs refused, 0/16 legitimate tasks wrongly refused. Failure causes: 14/16 the model
+returned no valid JSON (6 Planner, 8 Coder), 2/16 a step failed review or tests. Full table in the
+README; raw per-run data in `evals/results/`. The number is small-sample and the model is the
+bottleneck, not the loop.
+
+Two earlier attempts were **discarded, not published**: `LlamaServerProcess` started llama-server
+with an unread `stdout=PIPE`; after roughly 14 runs of request logging the pipe buffer filled, the
+server blocked on its next log write and every completion hung while `/health` still answered ok.
+Both attempts stalled at the same run, which is what exposed it. Fixed in PR #24 (output goes to
+`LLAMA_LOG_PATH`), verified with 300 real completions; the published run is the third attempt and
+its server log (93KB) is larger than the old buffer. Lesson: an evaluation harness is also a stress
+test of the code it drives, and `/health` ok does not mean the server is serving.
+
+## 12. Wiring audit: what is built versus what runs
+
+Phase 9's audit found the input guardrail had been built and tested but called nowhere. Phase 11
+repeated the check for every component, by searching the code for callers (not by trusting the
+design documents). Result:
+
+| Component | Built and tested | On the running path? |
+|---|---|---|
+| Orchestrator, Planner, Coder, Tool agents | yes | yes |
+| Input guardrail (`check_user_input`) | yes | yes, since Phase 9 (`Orchestrator.run` / `resume`) |
+| Protected paths, secret scanner, scrubbed test environment | yes | yes, through the tools that use them |
+| Memory (`MemoryStore`) | yes | only as an optional injection — no entrypoint and no evaluation run enables it (verified once, by hand, across two tasks) |
+| Hardware test runner | yes | `ToolAgent.run_hardware_tests` exists, but the orchestrator never calls it |
+| Metering and the evaluation harness | yes | evaluation runs only |
+| **OpenTelemetry tracing and the failure log** (`traced_call`, `FailureLog`, `configure_tracing`) | yes | **no — nothing calls them** |
+| **Context budgeting** (`ContextManager.maybe_compact`, the budget helpers) | yes | **no — nothing calls them** |
+| **A user-facing entrypoint** | — | **none exists**: only benchmark, verification and evaluation scripts |
+| LangSmith / OpenEval | not built | not used (LangSmith is only present as a disabled LangGraph dependency) |
+
+Consequences, stated plainly:
+
+- CLAUDE.md §4 requires that every agent and tool call is logged and traced, and that context is a
+  budgeted resource that is compacted before overflow. **Neither is true of the running system.**
+  The modules exist and are unit-tested; nothing connects them. A run leaves no trace and no
+  failure log.
+- Context is not enforced *anywhere*. The agents are stateless single-shot prompts, so there is no
+  history for `ContextManager` to compact — but nothing checks that a prompt (code context, recalled
+  memory, the step) plus the response reserve fits the ~4096-token slot either. An oversized
+  prompt would be truncated or rejected by llama-server rather than trimmed deliberately.
+- The original brief asked for "one layer that takes input from the user". The orchestrator
+  provides the loop, but there is no way to run it other than through Python or the scripts.
+
+What would close these (not scheduled; ordered by how cheaply they'd close a stated requirement):
+1. **Tracing:** a tracing proxy around the agents, as `MeteredAgent` already does for evaluation,
+   plus configuring the exporter and failure log at startup.
+2. **Prompt budget:** measure the composed prompt before each LLM call and shrink the code context
+   to fit, using the existing budget helpers.
+3. **An entrypoint:** a small CLI that builds the real stack, asks clarifying questions on the
+   terminal and prints the outcome.
+4. **Output format (the measured bottleneck, §11):** grammar/JSON-schema-constrained decoding in
+   llama-server, or the chat endpoint, so the model can't answer in prose when a JSON object is
+   required. This is the highest-value item and is now *measurable* with the evaluation harness.

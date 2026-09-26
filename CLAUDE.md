@@ -82,6 +82,8 @@ for the measured specs and the reasoning behind the current allocation:
   either replans or reports the failure to the user — it never retries silently forever.
 - **Every agent and tool call is logged and traced** (OpenTelemetry spans, structured JSON logs,
   a dedicated failure log) so runs can be evaluated after the fact.
+  **Status: not yet wired into the running system** (Phase 11 wiring audit) — the tracing module
+  exists and is tested, but nothing calls it. See REQUIREMENTS.md §12.
 - **Context is a bounded resource too**, tracked the same way as retries and step budgets. Every
   agent's conversation history is tracked against a token budget (`ContextManager`) and
   compacted — stale tool output evicted first, then older turns summarized — before it would
@@ -89,6 +91,8 @@ for the measured specs and the reasoning behind the current allocation:
   runs with an explicit `--parallel` slot count, its context is split evenly per slot, so the
   Planner/Coder each get a few thousand tokens, not the full configured context size. See
   REQUIREMENTS.md §6.
+  **Status: not enforced in the running system** (Phase 11 wiring audit) — `ContextManager` is
+  built and tested but nothing calls it, and no prompt-size check exists. See REQUIREMENTS.md §12.
 
 ---
 
@@ -164,6 +168,7 @@ config/               # single source of truth for settings (pydantic-settings)
 src/multiagent/       # orchestrator, agents, llm clients, memory, observability, guardrails
 tests/                # mirrors src/multiagent structure
 scripts/               # manual hardware verification scripts (not pytest — real GPU/binary needed)
+evals/results/        # raw + rendered results of real evaluation runs (scripts/run_eval.py)
 .env.example          # documented, safe placeholders only
 ```
 
