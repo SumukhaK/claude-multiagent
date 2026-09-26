@@ -8,7 +8,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # Local LLM serving: Planner + Coder agents (llama.cpp)
+    # Optional backend: llama.cpp llama-server (the first backend; Ollama below is the default)
     llama_cpp_dir: str = r"E:\LLMCPP"
     llama_model_path: str = r"E:\LLMCPP\DeepSeek-R1-Distill-Qwen-1.5B-UD-Q4_K_XL.gguf"
     llama_server_host: str = "127.0.0.1"
@@ -20,14 +20,18 @@ class Settings(BaseSettings):
     llama_kv_cache_type: str = "q8_0"
     llama_threads: int = 6
     llama_use_chat_template: bool = False  # wrap prompts in the model's own chat format (server-side)
-    llama_constrain_json: bool = False  # grammar-constrain Planner/Coder output to their JSON schemas
     llama_log_path: str = "logs/llama-server.log"  # server stdout/stderr (gitignored)
 
-    # Local LLM serving: Tool agent (Ollama, CPU-only)
+    # Local LLM serving (Ollama): Planner, Coder and Tool agent share ONE model and client. Different
+    # options per agent would make Ollama reload the whole model each time the agents alternate.
     ollama_host: str = "http://127.0.0.1:11434"
-    ollama_tool_model: str = "qwen2.5:7b-instruct"
-    ollama_tool_use_gpu: bool = False
-    ollama_tool_context_size: int = 4096
+    ollama_agent_model: str = "qwen2.5:7b-instruct"
+    ollama_agent_use_gpu: bool = True  # a 7B model does not fit 4GB of VRAM: Ollama splits GPU/CPU
+    ollama_agent_context_size: int = 8192
+    ollama_agent_timeout: float = 900.0  # seconds per call; at ~8 tokens/s a long reply takes minutes
+
+    # Generation control (any backend): constrain Planner/Coder output to their JSON schemas
+    constrain_json: bool = False
 
     # Memory layer (mem0, local): embeddings via Ollama, vector store on disk
     memory_path: str = ".memory"

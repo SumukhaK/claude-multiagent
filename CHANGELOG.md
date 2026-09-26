@@ -74,4 +74,6 @@ found a real pipeline bug (the Coder was never told the file name).
 ## The first local model, and moving to Qwen · #37
 The first local model (1.5B parameters on `llama-server`) did not pass the golden set; the full
 record, with plain-English explanations, is in [failed_experiment.md](failed_experiment.md). The
-agents now run on Ollama `qwen2.5:7b-instruct` and the same harness is being run against it.
+agents now run on Ollama `qwen2.5:7b-instruct`, which is the default backend in settings and in
+the eval and benchmark scripts (`llama-server` stays as an optional backend); the same harness is
+being run against it.

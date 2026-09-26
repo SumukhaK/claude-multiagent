@@ -117,7 +117,7 @@ done/blocked/deferred instead of removing them.
 | D5 | Orchestrator itself makes no LLM calls — pure LangGraph state machine / Python logic | Keeps hardware load minimal and the control flow deterministic and easy to reason about/test |
 | D6 | Python 3.11 + `uv` for the whole project | Already installed and working on this machine; matches the pydantic/LangGraph/mem0/OpenTelemetry ecosystem |
 | D7 | Inserted a new Phase 3 — **context engineering** — ahead of the Planning agent, renumbering old Phases 3–10 to 4–11 | User follow-up (§0.1): context compaction, tool-history eviction, per-agent summarization, and a `/compact`-equivalent needed to exist *before* any agent has a real conversation loop, not bolted on after. Also newly justified by a concrete hardware finding: `llama-server -np 2` makes this build's `--kv-unified` default to off, so the configured 8192-token context is actually split ~4096 tokens per Planner/Coder slot — a budget worth tracking explicitly. See REQUIREMENTS.md §6. |
-| D8 | Planner, Coder and Tool agent run on Ollama `qwen2.5:7b-instruct`, split between GPU and CPU by Ollama (`scripts/run_eval.py --agent-model`); all agents share one client so the model is not reloaded between them | The first local model failed the evaluation ([failed_experiment.md](failed_experiment.md)) and the cause is believed, not proven, to be model size. Measured here: about 7.9 tokens/s, 5.1GB resident, about 45% on the GPU at a 4096 context. `qwen2.5-coder:7b` was deliberately not pulled (an unknown gain was judged not worth the time). |
+| D8 | Planner, Coder and Tool agent run on Ollama `qwen2.5:7b-instruct`, split between GPU and CPU by Ollama (settings `OLLAMA_AGENT_*`); all agents share one client so the model is not reloaded between them | The first local model failed the evaluation ([failed_experiment.md](failed_experiment.md)) and the cause is believed, not proven, to be model size. Measured here: about 7.9 tokens/s, 5.1GB resident, about 45% on the GPU at a 4096 context. `qwen2.5-coder:7b` was deliberately not pulled (an unknown gain was judged not worth the time). |
 
 ## 2. Measured hardware (2026-09-26)
 
@@ -400,5 +400,11 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   including a plain-English explanation of each failure and which failures were my own bugs. The
   Planner-prompt rewording was measured and rejected (documented there).
 - 2026-09-27 — Model moved to Ollama `qwen2.5:7b-instruct` (decision D8). The eval script gained
-  `--agent-model`, `--agent-context` and `--agent-timeout`; all three agents share one client. First
-  smoke run on one task completed end to end; the full golden run is in progress.
+  `--agent-model`, `--agent-context` and `--agent-timeout` (#38); all three agents share one client.
+  First smoke run on one task completed end to end; the full golden run is in progress.
+- 2026-09-27 — Ollama made the default backend everywhere (`feat/ollama-default-backend`): settings
+  `OLLAMA_AGENT_*` replace `OLLAMA_TOOL_*` (one shared model for all agents), `CONSTRAIN_JSON`
+  replaces the llama-specific name, `agent_client_from_settings()` builds the shared client, the
+  eval and benchmark scripts default to Ollama with `--llama-server` for the optional backend, and
+  the context budget for Ollama agents follows the shared context size. Agents, orchestrator,
+  guardrails, tools, memory and the harness were unchanged.
