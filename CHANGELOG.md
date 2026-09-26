@@ -55,10 +55,13 @@ read `.env`; the old input filter blocked 4 of 25 attacks yet refused 3 of 24 le
 and the Coder executes model-written code with the developer's full OS privileges — which
 contradicted a claim in CLAUDE.md, now corrected.
 
-## Phase 10 — Evaluation · #22 #23
+## Phase 10 — Evaluation · #22 #23 #25 (+ #24)
 Wilson intervals, metering, ten golden tasks with hidden acceptance tests validated by real pytest
-runs, a runner, a report, and a real-model run (results in the README). *Learned:* see the README's
-Evaluation section — the dominant failure is the model not producing the required JSON.
+runs, a runner, a report, and a real-model run published in the README. *Result:* 0 of 16
+implementation runs succeeded; 14 failed because the model returned no valid JSON. Safety behaviour
+held (clean escalations, all adversarial requests refused). *Learned:* the evaluation itself found
+a bug in the llama-server wrapper (an unread stdout pipe froze the server after ~14 runs while
+`/health` still said ok), fixed in #24; two attempts were discarded before the third was published.
 
 ## Phase 11 — Polish and a wiring audit
 Diagram redrawn to distinguish what is wired from what is merely built; README claims corrected

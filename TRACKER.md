@@ -148,7 +148,7 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 | 8 | Memory layer: local mem0 (local embeddings via `nomic-embed-text`, local vector store), wired into Planner + Coder | ✅ |
 | 9 | Guardrails & security hardening pass: expand injection/secret-exfiltration filters, sandbox/tool-allowlist audit | ✅ |
 | 10 | Evaluation harness: golden task set, metrics (latency, token usage, tool success rate, hallucination rate + recovery, cost proxy), results appended to `README.md` | ✅ |
-| 11 | Polish: finalize architecture diagram, changelog, demo | ⬜ |
+| 11 | Polish: finalize architecture diagram, changelog, wiring audit (demo deferred: there is no entrypoint yet, see REQUIREMENTS.md §12) | ✅ |
 
 ## 4. Phase log
 
@@ -394,3 +394,10 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   an interpretation that does not oversell 0 hallucinated successes (there were 0 claimed
   successes). 555 tests passing (+6 documented expected failures). Next: JSON-constrained decoding
   (branch `feat/json-constrained-decoding`, code written, real-server check pending) and tracing.
+- 2026-09-26 — Phase 11 (polish) on `feat/final-docs`: architecture diagram redrawn to separate what
+  is wired from what is only built (`classDef notwired`), README claims corrected (LangSmith/OpenEval
+  are not used; the intro no longer promises a *merged* PR), new CHANGELOG.md, NON_TECHNICAL.md
+  "where things stand" written from the real evaluation result, and a component-by-component wiring
+  audit (REQUIREMENTS.md §12) that found tracing and context budgeting built but unconnected and no
+  user-facing entrypoint. The demo item is deliberately not done: an entrypoint is a new feature, not
+  polish. Docs only, no code changed.
