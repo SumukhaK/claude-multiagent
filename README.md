@@ -117,6 +117,13 @@ note per phase as it lands.
   `ToolAgent` composing all three — the only agent with git/GitHub access. Its one LLM-assisted
   step (commit-message generation) is deliberately scoped to short natural-language output, which
   live-verified reliably on the CPU-only Ollama model — see REQUIREMENTS.md §8.
+- **Phase 7 — Orchestrator**: the LangGraph state machine wiring Planner → Coder →
+  Planner-review → Tool into one loop, behind `Orchestrator.run()`/`.resume()`. Bounded retries
+  on every failure path (planner, coder, tests/review, tool), a hard step-budget circuit
+  breaker, and a human-in-the-loop clarification interrupt. Live end-to-end run (real Planner +
+  Coder, fake Tool agent) caught a real gap in the retry policy and a real case of the model
+  gaming the TDD schema check — both fixed/recorded honestly rather than hidden, see
+  REQUIREMENTS.md §8. All three sub-agents are now wired into one working system.
 
 ## Running locally
 

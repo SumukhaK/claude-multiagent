@@ -144,7 +144,7 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 | 4 | Planning agent: read-only filesystem tools, clarification-question flow, plan schema + validator, prompt template | ✅ |
 | 5 | Coding agent: TDD-enforcing workflow, sandboxed file write/edit tool, sandboxed pytest execution tool, mandatory step-review gate | ✅ |
 | 6 | Tool agent: git/gh wrapper tools (branch/commit/push/PR), allowlisted commands only, hardware/emulator test runner (best-effort/stretch), retry + timeout + circuit-breaker logic | ✅ |
-| 7 | Orchestrator: LangGraph state machine wiring all three agents, human-in-the-loop clarification interrupt, retry/escalation policy, hard step-budget circuit breaker, end-to-end test | 🔶 |
+| 7 | Orchestrator: LangGraph state machine wiring all three agents, human-in-the-loop clarification interrupt, retry/escalation policy, hard step-budget circuit breaker, end-to-end test | ✅ |
 | 8 | Memory layer: local mem0 (local embeddings via `nomic-embed-text`, local vector store), wired into Planner + Coder | ⬜ |
 | 9 | Guardrails & security hardening pass: expand injection/secret-exfiltration filters, sandbox/tool-allowlist audit | ⬜ |
 | 10 | Evaluation harness: golden task set, metrics (latency, token usage, tool success rate, hallucination rate + recovery, cost proxy), results appended to `README.md` | ⬜ |
@@ -288,3 +288,22 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   the review still came back `approved: true`. Recorded in REQUIREMENTS.md §8; the orchestrator
   (next component) therefore treats `tests_passed` as the primary gate and the review as an
   additional signal, not the deciding vote. 16 new tests, 202 passing overall.
+- 2026-09-26 — Second and final Phase 7 component landed on `feat/orchestrator-graph`: the
+  LangGraph state machine (`multiagent/orchestrator/`) wiring Planner → Coder → Planner-review →
+  Tool into one loop, behind a plain `Orchestrator.run()`/`.resume()` API. Verified LangGraph's
+  actual interrupt semantics with a standalone script before designing around them: a node
+  resumes by *re-executing from its start*, so `clarification_node` contains nothing but the
+  `interrupt()` call itself — all the real planning work stays in `plan_node`, which the graph
+  loops back to, so resuming never re-runs an LLM call by accident. Every failure path (planner,
+  coder, tests-failed-or-review-rejected, tool) gets the same bounded-retry-then-escalate
+  treatment, and a `step_count` vs `max_orchestrator_steps` check in every router is the hard
+  step-budget circuit breaker, checked before anything else. 11 tests passed on the first
+  implementation attempt after tracing every scenario by hand before writing code — but the real
+  end-to-end live run (real Planner+Coder, fake Tool agent) caught a genuine design gap missed by
+  those same hand-traced tests: planning failures had *zero* retries while every other failure
+  path had bounded ones, inconsistent with this project's own principle. Fixed
+  (`plan_retry_count`, mirroring the Coder's pattern) and re-verified live — recorded in full,
+  including a second live finding (the Coder mislabeling an implementation-only file as a "test
+  file," which the schema's TDD check can't catch since it only requires a test file to *exist*,
+  not that its content is a real test) in REQUIREMENTS.md §8. 11 new tests, 213 tests passing
+  overall. **Phase 7 complete — all three sub-agents are now wired into one working loop.**

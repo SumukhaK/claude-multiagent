@@ -227,3 +227,22 @@ with tool output in it, so compaction is load-bearing, not optional headroom.
   phase) therefore treats `tests_passed` as the primary, objective gate, and surfaces the
   Planner's review as an additional signal (a rejection is acted on; an approval is not, by
   itself, proof of correctness) rather than the deciding vote.
+- **The full end-to-end run, live: safety mechanisms worked correctly; the model still couldn't
+  finish the task within budget, and that's the honest headline, not a failure of the
+  orchestrator.** Ran the real orchestrator (real llama-server-backed Planner and Coder, a fake
+  Tool agent to avoid real git/network side effects) against "add a function `add(a, b)`..." with
+  `max_retries_per_step=2`. First finding: a planning call can fail outright — one run got back
+  pure prose with zero JSON braces anywhere in it, ignoring the "respond with ONLY a JSON object"
+  instruction completely; the newly-added plan-retry logic (this section's other fix) recovered
+  from that on a later attempt. Second finding, more interesting: the Coder proposed a file at
+  `test/add.py` that the schema accepted as a "test file" (TDD enforcement only checks that a
+  test file exists, not that its content is actually a test), but its entire content was just
+  `def add(a, b) -> int: return a + b` — no `test_` function at all. pytest correctly reported
+  this as a failure (no tests collected), `tests_passed=False` correctly skipped the review call
+  (per this project's own gating rule), and the step was retried up to the configured budget —
+  but the model never corrected the mistake within it, and the orchestrator escalated cleanly
+  with a clear structured error (`"step 0 failed review/tests after 3 retries"`) instead of
+  crashing, looping, or falsely reporting success. That's the system doing exactly what it was
+  designed to do when the underlying model can't complete a task — which is the honest measure of
+  success for this phase, not a fully green run. Systematic characterization of how often this
+  happens is Phase 10's job, not a handful of manual runs.
