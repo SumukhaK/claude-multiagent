@@ -88,3 +88,26 @@ def test_a_scripted_model_drives_the_real_stack_to_a_genuine_success(tmp_path):
     assert result.outcome == "success", result.error
     assert result.acceptance_passed is True
     assert {op for op, ok in result.tool_operations if ok} >= {"create_branch", "commit", "push"}
+
+
+def test_constrain_json_sends_a_schema_to_the_planner_and_never_to_the_tool_agent(tmp_path):
+    seen = {"planner": [], "tool": []}
+
+    class Recording:
+        def __init__(self, role):
+            self._role = role
+
+        def generate(self, prompt, *, max_tokens=512, json_schema=None):
+            seen[self._role].append(json_schema)
+            return LLMResponse(text="no json", prompt_tokens=1, completion_tokens=1, latency_seconds=0.1)
+
+    def build(sandbox, meter):
+        return build_real_system(
+            planner_llm=Recording("planner"), coder_llm=Recording("planner"), tool_llm=Recording("tool"),
+            sandbox=sandbox, meter=meter, max_retries=1, max_steps=6, max_tokens=64, constrain_json=True,
+        )
+
+    run_task(TASKS["feature_add"], 0, build, tmp_path)
+
+    assert seen["planner"] and all(schema is not None for schema in seen["planner"])
+    assert all(schema is None for schema in seen["tool"])

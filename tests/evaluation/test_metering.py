@@ -158,3 +158,18 @@ def test_the_real_orchestrator_runs_unchanged_through_metered_agents():
         ("tool", "commit_and_push"),
         ("tool", "open_pull_request"),
     ]
+
+
+def test_llm_client_passes_a_json_schema_through_only_when_one_is_given():
+    seen = []
+
+    class Recording:
+        def generate(self, prompt, **kwargs):
+            seen.append(kwargs)
+            return LLMResponse(text="", prompt_tokens=0, completion_tokens=0, latency_seconds=0)
+
+    client = MeteredLLMClient(Recording(), Meter(), role="planner")
+    client.generate("p", max_tokens=8)
+    client.generate("p", max_tokens=8, json_schema={"type": "object"})
+
+    assert seen == [{"max_tokens": 8}, {"max_tokens": 8, "json_schema": {"type": "object"}}]

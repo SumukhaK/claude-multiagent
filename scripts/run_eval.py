@@ -34,6 +34,12 @@ def main() -> None:
     parser.add_argument("--tasks", nargs="*", help="only these task ids")
     parser.add_argument("--max-steps", type=int, default=12, help="orchestrator step budget per run")
     parser.add_argument("--max-tokens", type=int, default=1200, help="max tokens per Planner/Coder response")
+    parser.add_argument(
+        "--constrain-json",
+        action="store_true",
+        default=None,
+        help="constrain Planner/Coder decoding to their JSON schemas (default: LLAMA_CONSTRAIN_JSON)",
+    )
     parser.add_argument("--update-readme", action="store_true", help="publish the report into README.md")
     args = parser.parse_args()
 
@@ -75,6 +81,9 @@ def main() -> None:
             max_retries=settings.max_retries_per_step,
             max_steps=args.max_steps,
             max_tokens=args.max_tokens,
+            constrain_json=(
+                settings.llama_constrain_json if args.constrain_json is None else args.constrain_json
+            ),
         )
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as workdir:
             results = run_suite(tasks, args.repeats, make_system, Path(workdir), on_result)
@@ -98,10 +107,11 @@ def main() -> None:
         print("README.md updated.")
 
 
-def _build(sandbox, meter, *, llama, ollama, max_retries, max_steps, max_tokens):
+def _build(sandbox, meter, *, llama, ollama, max_retries, max_steps, max_tokens, constrain_json):
     return build_real_system(
         planner_llm=llama, coder_llm=llama, tool_llm=ollama, sandbox=sandbox, meter=meter,
         max_retries=max_retries, max_steps=max_steps, max_tokens=max_tokens,
+        constrain_json=constrain_json,
     )
 
 

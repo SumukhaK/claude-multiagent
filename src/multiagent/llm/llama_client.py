@@ -15,15 +15,23 @@ class LlamaServerClient:
         self._timeout = timeout
 
     def generate(
-        self, prompt: str, *, max_tokens: int = 512, client: httpx.Client | None = None
+        self,
+        prompt: str,
+        *,
+        max_tokens: int = 512,
+        json_schema: dict | None = None,
+        client: httpx.Client | None = None,
     ) -> LLMResponse:
         started = time.monotonic()
+        payload: dict = {"prompt": prompt, "n_predict": max_tokens, "stream": False}
+        if json_schema is not None:
+            payload["json_schema"] = json_schema
         owns_client = client is None
         http_client = client or httpx.Client(timeout=self._timeout)
         try:
             response = http_client.post(
                 f"{self._base_url}/completion",
-                json={"prompt": prompt, "n_predict": max_tokens, "stream": False},
+                json=payload,
             )
             response.raise_for_status()
             data = response.json()

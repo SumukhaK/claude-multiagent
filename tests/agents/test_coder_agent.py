@@ -23,9 +23,13 @@ class FakeLLMClient:
         self._text = text
         self._error = error
         self.last_prompt: str | None = None
+        self.last_json_schema: dict | None = None
 
-    def generate(self, prompt: str, *, max_tokens: int = 512) -> LLMResponse:
+    def generate(
+        self, prompt: str, *, max_tokens: int = 512, json_schema: dict | None = None
+    ) -> LLMResponse:
         self.last_prompt = prompt
+        self.last_json_schema = json_schema
         if self._error is not None:
             raise self._error
         return LLMResponse(text=self._text, prompt_tokens=10, completion_tokens=10, latency_seconds=0.1)
@@ -45,12 +49,13 @@ def _proposal_json(test_content: str, impl_content: str) -> str:
 
 @pytest.fixture
 def agent_factory(tmp_path):
-    def make(llm_client):
+    def make(llm_client, **kwargs):
         return CoderAgent(
             llm_client=llm_client,
             filesystem=WritableFilesystem(tmp_path),
             test_runner=SandboxedPytestRunner(tmp_path),
             task_id="task-1",
+            **kwargs,
         )
 
     return make
@@ -118,7 +123,7 @@ def test_implement_step_returns_error_when_the_proposal_has_no_test_files(agent_
     message = agent.implement_step(PlanStep(step_id=1, description="add add()"))
 
     assert message.status == MessageStatus.ERROR
-    assert "TDD" in message.error
+    assert "test_files" in message.error
 
 
 def test_implement_step_rejects_a_sandbox_escape_without_writing_any_file(tmp_path, agent_factory):
@@ -216,3 +221,24 @@ def test_implement_step_reports_an_os_error_during_writing_instead_of_crashing(t
 
     assert message.status == MessageStatus.ERROR
     assert "disk full" in message.error
+
+
+_STEP = PlanStep(step_id=1, description="add add()", edge_cases=[])
+
+
+def test_coder_sends_no_schema_unless_constrain_json_is_enabled(agent_factory):
+    llm = FakeLLMClient(text="not json")
+
+    agent_factory(llm).implement_step(_STEP)
+
+    assert llm.last_json_schema is None
+
+
+def test_coder_constrains_the_response_to_the_code_change_proposal_schema(agent_factory):
+    from multiagent.agents.coder.schemas import CodeChangeProposal
+
+    llm = FakeLLMClient(text="not json")
+
+    agent_factory(llm, constrain_json=True).implement_step(_STEP)
+
+    assert llm.last_json_schema == CodeChangeProposal.model_json_schema()

@@ -28,7 +28,7 @@ def test_a_valid_proposal_with_tests_and_implementation_parses():
 
 def test_a_proposal_with_no_test_files_is_rejected():
     """TDD is mandatory, not just requested -- enforced at the schema level."""
-    with pytest.raises(ValidationError, match="TDD"):
+    with pytest.raises(ValidationError, match="test_files"):
         CodeChangeProposal.model_validate(
             {
                 "kind": "code_change",
@@ -58,3 +58,11 @@ def test_a_proposal_with_tests_but_no_implementation_files_is_valid():
 def test_proposed_file_requires_both_path_and_content():
     with pytest.raises(ValidationError):
         ProposedFile.model_validate({"path": "src/x.py"})
+
+
+def test_the_json_schema_itself_demands_a_test_file_so_constrained_decoding_enforces_tdd():
+    """A grammar built from the schema can't see Python validators, so the rule must be in the schema."""
+    schema = CodeChangeProposal.model_json_schema()
+
+    assert "test_files" in schema["required"]
+    assert schema["properties"]["test_files"]["minItems"] == 1

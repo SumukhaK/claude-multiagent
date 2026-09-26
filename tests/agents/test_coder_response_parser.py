@@ -55,7 +55,7 @@ def test_parse_code_change_response_raises_when_no_test_files_are_proposed():
         '"summary": "added x without a test"}'
     )
 
-    with pytest.raises(CodeChangeParsingError, match="TDD"):
+    with pytest.raises(CodeChangeParsingError, match="test_files"):
         parse_code_change_response(raw)
 
 

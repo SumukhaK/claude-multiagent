@@ -27,6 +27,7 @@ proposal can't cause a partial write.
 import httpx
 
 from multiagent.agents.coder.prompts import render_coder_prompt
+from multiagent.agents.coder.schemas import CodeChangeProposal
 from multiagent.agents.coder.response_parser import (
     CodeChangeParsingError,
     parse_code_change_response,
@@ -54,6 +55,7 @@ class CoderAgent:
         test_runner: SandboxedPytestRunner,
         task_id: str,
         max_tokens: int = 1536,
+        constrain_json: bool = False,
     ):
         if max_tokens <= 0:
             raise ValueError("max_tokens must be positive")
@@ -62,12 +64,20 @@ class CoderAgent:
         self._test_runner = test_runner
         self._task_id = task_id
         self._max_tokens = max_tokens
+        self._constrain_json = constrain_json
 
     def implement_step(self, step: PlanStep, code_context: str = "") -> AgentMessage:
         prompt = render_coder_prompt(step=step, code_context=code_context)
 
         try:
-            response = self._llm_client.generate(prompt, max_tokens=self._max_tokens)
+            if self._constrain_json:
+                response = self._llm_client.generate(
+                    prompt,
+                    max_tokens=self._max_tokens,
+                    json_schema=CodeChangeProposal.model_json_schema(),
+                )
+            else:
+                response = self._llm_client.generate(prompt, max_tokens=self._max_tokens)
         except httpx.HTTPError as exc:
             return self._error(f"coder LLM call failed: {exc}")
 

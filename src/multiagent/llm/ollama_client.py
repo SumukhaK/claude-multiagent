@@ -27,7 +27,12 @@ class OllamaClient:
         self._timeout = timeout
 
     def generate(
-        self, prompt: str, *, max_tokens: int = 512, client: httpx.Client | None = None
+        self,
+        prompt: str,
+        *,
+        max_tokens: int = 512,
+        json_schema: dict | None = None,
+        client: httpx.Client | None = None,
     ) -> LLMResponse:
         started = time.monotonic()
         options: dict[str, int] = {
@@ -37,17 +42,21 @@ class OllamaClient:
         if self._context_size is not None:
             options["num_ctx"] = self._context_size
 
+        payload: dict = {
+            "model": self._model,
+            "prompt": prompt,
+            "stream": False,
+            "options": options,
+        }
+        if json_schema is not None:
+            payload["format"] = json_schema
+
         owns_client = client is None
         http_client = client or httpx.Client(timeout=self._timeout)
         try:
             response = http_client.post(
                 f"{self._host}/api/generate",
-                json={
-                    "model": self._model,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": options,
-                },
+                json=payload,
             )
             response.raise_for_status()
             data = response.json()

@@ -402,3 +402,11 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   audit (REQUIREMENTS.md §12) that found tracing and context budgeting built but unconnected and no
   user-facing entrypoint. The demo item is deliberately not done: an entrypoint is a new feature, not
   polish. Docs only, no code changed.
+- 2026-09-26 — JSON-constrained decoding built and measured on `feat/json-constrained-decoding`
+  (optional `json_schema` on `LLMClient.generate`, `constrain_json` on Planner/Coder,
+  `LLAMA_CONSTRAIN_JSON`, `--constrain-json` on the eval script; `CodeChangeProposal.test_files` now
+  demands one item in the schema itself). Verified against the real server. A/B on the same 20 runs:
+  no-JSON failures 11 -> 0, successes 0 -> 0, ~9x fewer tokens and ~9x faster, every proposed test
+  file empty of tests. Also found while comparing: the baseline failure breakdown had been counted by
+  agent instead of by error text (fixed in PR #27). Flag stays off. Next: prompt improvements, then
+  tracing wiring.

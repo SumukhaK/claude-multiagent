@@ -17,6 +17,7 @@ rather than something to keep hand-tuning here.
 """
 
 import httpx
+from pydantic import BaseModel
 
 from multiagent.agents.planner.prompts import render_planner_prompt
 from multiagent.agents.planner.response_parser import PlanParsingError, parse_plan_response
@@ -30,26 +31,43 @@ from multiagent.contracts.messages import (
     AgentName,
     CodeChangeReport,
     MessageStatus,
+    Plan,
     PlanStep,
+    StepReview,
 )
-from multiagent.llm.base import LLMClient
+from multiagent.llm.base import LLMClient, LLMResponse
 
 
 class PlannerAgent:
     """Turns a goal (and optional existing-code context) into a Plan or a clarification request."""
 
-    def __init__(self, llm_client: LLMClient, task_id: str, max_tokens: int = 1024):
+    def __init__(
+        self,
+        llm_client: LLMClient,
+        task_id: str,
+        max_tokens: int = 1024,
+        constrain_json: bool = False,
+    ):
         if max_tokens <= 0:
             raise ValueError("max_tokens must be positive")
         self._llm_client = llm_client
         self._task_id = task_id
         self._max_tokens = max_tokens
+        self._constrain_json = constrain_json
+
+    def _generate(self, prompt: str, schema_model: type[BaseModel]) -> LLMResponse:
+        """One LLM call; with constrain_json the server is told to decode only schema-valid JSON."""
+        if self._constrain_json:
+            return self._llm_client.generate(
+                prompt, max_tokens=self._max_tokens, json_schema=schema_model.model_json_schema()
+            )
+        return self._llm_client.generate(prompt, max_tokens=self._max_tokens)
 
     def create_plan(self, goal: str, code_context: str = "") -> AgentMessage:
         prompt = render_planner_prompt(goal=goal, code_context=code_context)
 
         try:
-            response = self._llm_client.generate(prompt, max_tokens=self._max_tokens)
+            response = self._generate(prompt, Plan)
         except httpx.HTTPError as exc:
             return AgentMessage(
                 agent=AgentName.PLANNER,
@@ -91,7 +109,7 @@ class PlannerAgent:
         prompt = render_review_prompt(step=step, report=report, code_context=code_context)
 
         try:
-            response = self._llm_client.generate(prompt, max_tokens=self._max_tokens)
+            response = self._generate(prompt, StepReview)
         except httpx.HTTPError as exc:
             return AgentMessage(
                 agent=AgentName.PLANNER,

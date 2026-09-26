@@ -533,3 +533,23 @@ What would close these (not scheduled; ordered by how cheaply they'd close a sta
 4. **Output format (the measured bottleneck, §11):** grammar/JSON-schema-constrained decoding in
    llama-server, or the chat endpoint, so the model can't answer in prose when a JSON object is
    required. This is the highest-value item and is now *measurable* with the evaluation harness.
+
+### 11.4 Experiment: JSON-constrained decoding
+
+`LLAMA_CONSTRAIN_JSON` (default off) sends each Planner/Coder call's pydantic schema to llama-server
+as `json_schema` (verified against the real server, including the nested `$defs`). One schema
+change was needed to make it meaningful: `CodeChangeProposal.test_files` is now required with
+`min_length=1`, because a grammar built from the schema cannot see a Python validator (TDD was
+previously enforced only after decoding).
+
+Same 20 runs, classified by recorded error text: **no-JSON failures 11 -> 0; successes 0/16 -> 0/16;
+tokens per implementation run ~4,020 -> ~1,220; median wall time ~55s -> ~6s**. The 16 failures
+became 15 well-formed-but-unusable Coder proposals (10 invented stand-in paths such as
+`/path/to/test1`, which the sandbox rejects; 5 writes to the sandbox directory itself) and 1
+failed review. All 11 test files the Coder proposed contained no `test_` function (baseline 3/4).
+The prompt contains only `"..."` placeholders, so these are the model's own stand-ins, not copied
+text. Constrained decoding also drops the `<think>` block. Conclusion: guaranteeing the *shape* was
+necessary but not sufficient; the content is now the bottleneck, so the next experiment is the
+prompt (relative-path and concrete-test examples). The flag stays off by default: it makes failure
+cheaper, not success likelier, and the reasoning block it removes may matter once the content
+improves.
