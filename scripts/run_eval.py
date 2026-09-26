@@ -57,6 +57,7 @@ def main() -> None:
     out_dir = ROOT / "evals" / "results"
     out_dir.mkdir(parents=True, exist_ok=True)
     jsonl = out_dir / f"{stamp}.jsonl"
+    artifacts_dir = ROOT / "evals" / "artifacts" / stamp  # evidence of every run that did not succeed
     total = len(tasks) * args.repeats
     done = 0
 
@@ -97,7 +98,7 @@ def main() -> None:
             ),
         )
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as workdir:
-            results = run_suite(tasks, args.repeats, make_system, Path(workdir), on_result)
+            results = run_suite(tasks, args.repeats, make_system, Path(workdir), on_result, artifacts_dir)
     finally:
         server.stop()
 
@@ -112,6 +113,7 @@ def main() -> None:
     )
     (out_dir / f"{stamp}.md").write_text(markdown, encoding="utf-8")
     print("\n" + markdown)
+    print(f"Failure artifacts (local, gitignored): {artifacts_dir}")
     if args.update_readme:
         readme = ROOT / "README.md"
         readme.write_text(update_readme(readme.read_text(encoding="utf-8"), markdown), encoding="utf-8")

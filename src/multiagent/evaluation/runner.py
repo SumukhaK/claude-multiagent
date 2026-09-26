@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from multiagent.evaluation.artifacts import keep_run_artifacts
 from multiagent.evaluation.golden import GoldenTask, agent_visible_context
 from multiagent.evaluation.metering import Meter
 from multiagent.evaluation.sandbox import prepare_sandbox
@@ -93,9 +94,19 @@ def _drive(orchestrator: Orchestrator, task: GoldenTask, run_id: str) -> tuple[d
     return result, asked
 
 
-def run_task(task: GoldenTask, repeat: int, make_system: SystemFactory, workdir: Path) -> RunResult:
+def run_task(
+    task: GoldenTask,
+    repeat: int,
+    make_system: SystemFactory,
+    workdir: Path,
+    artifacts_dir: Path | None = None,
+) -> RunResult:
+    """Run one task. With `artifacts_dir`, a run that does not succeed keeps its evidence there."""
     run_id = f"{task.id}-{repeat}"
-    meter = Meter()
+    meter = Meter(keep_responses=artifacts_dir is not None)
+    sandbox: Path | None = None
+    result: dict[str, Any] = {}
+    acceptance_output = ""
     try:
         sandbox = prepare_sandbox(task, workdir / run_id)
         orchestrator = make_system(sandbox, meter)
@@ -107,18 +118,21 @@ def run_task(task: GoldenTask, repeat: int, make_system: SystemFactory, workdir:
         acceptance_passed = None
         if task.expectation == "implement" and status != "refused":
             (sandbox / "test_acceptance.py").write_text(task.acceptance_test, encoding="utf-8")
-            acceptance_passed = SandboxedPytestRunner(sandbox, timeout_seconds=30).run(targets=["test_acceptance.py"]).passed
+            acceptance = SandboxedPytestRunner(sandbox, timeout_seconds=30).run(targets=["test_acceptance.py"])
+            acceptance_passed, acceptance_output = acceptance.passed, acceptance.output
         fake_test, test_files = _coder_wrote_a_fake_test(result, sandbox)
     except Exception as exc:  # noqa: BLE001 - one crashing run must be recorded, never abort the whole suite
-        return RunResult(
+        crashed = RunResult(
             task.id, task.category, task.expectation, repeat, "crashed", "crashed", None, False, False, True,
             0.0, meter.total_tokens(), meter.llm_seconds(), error=str(exc),
         )
+        _keep(artifacts_dir, run_id, crashed, meter, sandbox, result, acceptance_output)
+        return crashed
 
     latencies: dict[str, list[float]] = {}
     for call in meter.llm_calls:
         latencies.setdefault(call.role, []).append(call.latency_seconds)
-    return RunResult(
+    run_result = RunResult(
         task_id=task.id,
         category=task.category,
         expectation=task.expectation,
@@ -137,6 +151,23 @@ def run_task(task: GoldenTask, repeat: int, make_system: SystemFactory, workdir:
         coder_test_files=test_files,
         error=result.get("error"),
     )
+    _keep(artifacts_dir, run_id, run_result, meter, sandbox, result, acceptance_output)
+    return run_result
+
+
+def _keep(
+    artifacts_dir: Path | None,
+    run_id: str,
+    run_result: RunResult,
+    meter: Meter,
+    sandbox: Path | None,
+    result: dict[str, Any],
+    acceptance_output: str,
+) -> None:
+    if artifacts_dir is not None:
+        keep_run_artifacts(
+            artifacts_dir, run_id, run_result, meter, sandbox, result.get("step_reports", []), acceptance_output
+        )
 
 
 def run_suite(
@@ -145,12 +176,13 @@ def run_suite(
     make_system: SystemFactory,
     workdir: Path,
     on_result: Callable[[RunResult], None] | None = None,
+    artifacts_dir: Path | None = None,
 ) -> list[RunResult]:
     """Run every task `repeats` times (interleaved, so a slow drift affects tasks evenly)."""
     results = []
     for repeat in range(repeats):
         for task in tasks:
-            result = run_task(task, repeat, make_system, workdir)
+            result = run_task(task, repeat, make_system, workdir, artifacts_dir)
             results.append(result)
             if on_result:
                 on_result(result)

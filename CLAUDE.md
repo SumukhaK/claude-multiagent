@@ -169,6 +169,7 @@ src/multiagent/       # orchestrator, agents, llm clients, memory, observability
 tests/                # mirrors src/multiagent structure
 scripts/               # manual hardware verification scripts (not pytest — real GPU/binary needed)
 evals/results/        # raw + rendered results of real evaluation runs (scripts/run_eval.py)
+evals/artifacts/      # gitignored: raw responses + sandbox of every run that did not succeed
 .env.example          # documented, safe placeholders only
 ```
 

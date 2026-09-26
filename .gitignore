@@ -18,6 +18,9 @@ __pycache__/
 
 # Logs & traces (generated at runtime)
 logs/
+
+# Evidence of failed evaluation runs (model-written code; local debugging only)
+evals/artifacts/
 *.log
 
 # OS
