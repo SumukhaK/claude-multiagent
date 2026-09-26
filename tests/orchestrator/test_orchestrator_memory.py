@@ -7,6 +7,7 @@ attempts, which would poison future recall.
 """
 
 from multiagent.contracts.messages import PlanStep
+from multiagent.guardrails.input_filter import sanitize_tool_output
 from tests.orchestrator.fakes import (
     FakeCoderAgent,
     FakeMemory,
@@ -48,14 +49,14 @@ def test_planner_gets_recalled_memory_queried_by_the_goal():
 def test_recalled_memory_is_appended_to_the_existing_code_context():
     planner, _, _ = build(FakeMemory("MEMORY-BLOCK"), code_context="EXISTING CODE")
 
-    assert planner.plan_contexts[0] == "EXISTING CODE\n\nMEMORY-BLOCK"
+    assert planner.plan_contexts[0] == sanitize_tool_output("EXISTING CODE") + "\n\nMEMORY-BLOCK"
 
 
 def test_empty_recall_leaves_the_code_context_untouched():
     planner, coder, _ = build(FakeMemory(""), code_context="EXISTING CODE")
 
-    assert planner.plan_contexts[0] == "EXISTING CODE"
-    assert coder.contexts[0] == "EXISTING CODE"
+    assert planner.plan_contexts[0] == sanitize_tool_output("EXISTING CODE")
+    assert coder.contexts[0] == sanitize_tool_output("EXISTING CODE")
 
 
 def test_coder_and_reviewer_get_recalled_memory_queried_by_the_step():
