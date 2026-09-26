@@ -25,7 +25,7 @@ _PLACEHOLDER = "[tool output omitted to save context]"
 
 
 def estimate_tokens(text: str) -> int:
-    """Cheap token-count approximation (~4 chars/token). Not exact — see REQUIREMENTS.md §5.
+    """Cheap token-count approximation (~4 chars/token). Not exact — see REQUIREMENTS.md §6.
 
     An exact count would require a round trip to llama-server's /tokenize endpoint per turn,
     which isn't worth the extra hardware/latency cost just for budget bookkeeping.

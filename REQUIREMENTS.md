@@ -159,6 +159,11 @@ with tool output in it, so compaction is load-bearing, not optional headroom.
 - **Two thresholds, not one:** `warning_ratio` (default 0.75) is a soft signal an agent/orchestrator
   can log or react to proactively; `hard_ratio` (default 0.9) is where compaction actually
   triggers — leaving headroom before the model's real context limit, not right up against it.
+- **Token counts are an approximation** (`estimate_tokens`, ~4 characters per token), not an exact
+  count from the model's own tokenizer. An exact count would mean a round trip to llama-server's
+  `/tokenize` endpoint on every turn just for budget bookkeeping, which isn't worth the extra
+  hardware/latency cost — `token_counter` is an injectable dependency, so a more precise counter
+  can be swapped in later without changing `ContextManager` itself.
 
 ## 7. Explicit non-goals (for now)
 
