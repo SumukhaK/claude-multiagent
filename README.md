@@ -235,7 +235,7 @@ The 1.5B distilled model is the limit, not the loop. Raw per-run data is in `eva
 
 ### Experiments after the baseline
 
-Five more configurations on the same 20 runs (full table, corrections and caveats in
+Seven more configurations on the same 20 runs (full table, corrections and caveats in
 [REQUIREMENTS.md §11.6](REQUIREMENTS.md#116-six-configurations-and-what-they-actually-show); raw
 data in `evals/results/`).
 
@@ -244,6 +244,8 @@ data in `evals/results/`).
 | Baseline (raw prompt, unconstrained) | 0/16 | 11 | ~4,020 | 55s |
 | JSON-constrained decoding | 0/16 | 0 | ~1,220 | 6s |
 | Constrained + reworded prompt + chat template | 0/16 (1 false success) | 0 | ~1,740 | 16s |
+| Same, plus the original goal given to the Coder | 0/16 | 0 | ~2,550 | 19s |
+| Default (raw, unconstrained), plus the goal | 0/16 | 6 | ~3,510 | 37s |
 
 Nothing solved a task. What changed is *where* it fails: constrained decoding removes the format
 failure and makes failure ~3x cheaper in tokens and ~9x faster; with a reworded prompt and the
@@ -251,6 +253,6 @@ model's chat template, every run now writes a test file and an implementation an
 that those tests do not pass. Along the way: a worked example in the prompt was copied verbatim and
 made things worse; a `"..."` in the prompt's shape line was copied as file content; the template
 and the reworded prompt only help together, and the reworded prompt only works when decoding is
-constrained. The remaining limit is the quality of what a 1.5B model writes. One run was reported
+constrained. Inspecting saved failures then showed the Coder had never been given the task's file name; handing it the goal made the named file appear in 2 to 3 of 10 feature runs (from 0 of 4) but did not change the 0/16. In one run the model wrote a correct function into the right file and it was still failed, because it put that file in the wrong place for the mandatory-TDD rule. The remaining limit is the quality of what a 1.5B model writes. One run was reported
 as done while the hidden test failed; I could not inspect why because the harness discards its
 sandboxes.

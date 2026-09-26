@@ -52,13 +52,14 @@ try, and how often it made something up and caught its own mistake).
 
 Everything above is built and tested, and the pieces have been run together on real local models.
 The honest result: **the system has not completed any of the small coding tasks it was given**
-(0 of 16, in six different configurations). What improved is *how* it fails. At first the small AI
+(0 of 16, in eight different configurations). What improved is *how* it fails. At first the small AI
 model usually answered in ordinary sentences when the system needed a strictly formatted reply, so
 the next worker never got instructions it could read. After forcing the format, using the model's
 own conversation format and rewording the instructions, every attempt now produces real code and
 real tests, but they do not pass. Several of my own explanations along the way turned out to be
-wrong and were corrected in the notes. The limit now looks like the size of the model, not the
-plumbing. Every failure is reported cleanly, every harmful request is refused, and a detailed
+wrong and were corrected in the notes. Keeping the evidence of failed attempts revealed one
+real plumbing flaw (the coding worker was never told which file to write, which is now fixed),
+and fixing it did not change the score. The limit now looks like the size of the model. Every failure is reported cleanly, every harmful request is refused, and a detailed
 activity log exists for test runs. A "context budget" tracker is built but not switched on, and
 there is no simple command-line front door yet; the technical notes list exactly what is and is
 not connected.

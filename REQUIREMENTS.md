@@ -537,7 +537,7 @@ template ends with `<think>` plus a newline; keeping or stripping it made no mea
 Also refuted: letting the model think first and constraining only the final answer (0/12 tests
 passing, slower). The prompt rewrite lands separately.
 
-### 11.6 Six configurations, and what they actually show
+### 11.6 Eight configurations, and what they actually show
 
 All runs use the same ten golden tasks x 2 repeats (16 implementation runs, 4 adversarial),
 classified by recorded error text. Raw data for every row is in `evals/results/`.
@@ -550,8 +550,10 @@ classified by recorded error text. Raw data for every row is in `evals/results/`
 | 4 | Unconstrained + worked example (branch discarded) | 0 | 0 | 14 no/invalid JSON, 2 review/tests | ~4,520 | 83s | 2 |
 | 5 | **Constrained + words prompt + chat template** | 0 | **1** | 15 review/tests | ~1,740 | 16s | 16 (10 fake) |
 | 6 | Unconstrained + words prompt + chat template (prompt no longer selectable) | 0 | 0 | 11 wrong-shape JSON, 5 no/invalid JSON | ~4,540 | 57s | 0 |
+| 7 | Constrained + words prompt + chat template + **goal given to the Coder** | 0 | 0 | 13 review/tests, 3 no/invalid JSON | ~2,550 | 19s | 15 (7 fake) |
+| 8 | Default (raw prompt, unconstrained) + **goal given to the Coder** | 0 | 0 | 6 no/invalid JSON, 5 wrong-shape JSON, 3 bad path, 1 review/tests, 1 empty plan | ~3,510 | 37s | 5 (all 5 fake) |
 
-**Nothing solved a single task.** 0 of 16 in all six. No configuration is "better" at the thing
+**Nothing solved a single task.** 0 of 16 in all eight. No configuration is "better" at the thing
 that matters; each one moves *where* the failure happens. Read the table as a map of failure modes,
 not a leaderboard. What the map shows:
 
@@ -577,6 +579,16 @@ not a leaderboard. What the map shows:
    inspect why, because the harness discarded each sandbox. It now keeps them (11.7); the false
    success has not recurred since, so this one remains unexplained.
 
+7. **The Coder was never told the goal, and now is** (rows 7 and 8, 11.7). Handing it the original
+   task raised the share of feature runs that write the file the task names from 0 of 4 to 2 of 10
+   (row 7) and 3 of 10 (row 8), but the success count stayed 0 of 16: the 1.5B model often still
+   writes only test files, wrong names, or nothing. Row 8 also holds the first run in which
+   **correct code was produced**: `feature_safe_divide#1` wrote a correct `safe_divide` into the
+   named `mathx.py` and the hidden test passes (3 of 3), but it was reported as failed, because the
+   model put that file in `test_files` and later proposals had none, so the mandatory-TDD rule
+   failed the step. It is correctly not counted as a success (a test file is required), and the
+   rule stays.
+
 **Corrections made during this investigation** (each fixed in the docs where it appeared): the
 baseline breakdown was first counted by agent instead of by error text (14 -> 11 no-JSON, PR #27);
 "the model echoes the prompt's placeholder paths" (the paths were its own; only the `"..."` bodies
@@ -589,7 +601,7 @@ with wide intervals, so a difference of a few runs is noise. The prompt ablation
 the prompt was also informed by the golden-run failure classes, so the golden set is not a clean
 held-out test of those changes. "Fake test" counts a run if *any* proposed test file lacks a
 `test_` function. The row 4 run overlapped with a full test-suite run on the same machine, so its
-timings are slightly inflated. None of this changes the headline: 0/16.
+timings are slightly inflated. The before/after on file names (11.7) compares ten runs per row against four. None of this changes the headline: 0/16.
 
 ### 11.7 A first look inside failed runs
 
@@ -605,8 +617,25 @@ content with broken string escapes.
 
 Caveats: six runs, one configuration; this is evidence of a pipeline gap, not a measured share of
 the 0/16. It also means earlier comparisons between configurations were partly measuring a
-constraint no model could satisfy. Not fixed here: giving the Coder the goal is a design change
-(what each agent is allowed to see) and is proposed separately.
+constraint no model could satisfy.
+
+**The fix and what it did.** The Coder is now given the original goal (with any clarification
+answer), exactly as the Planner sees it, and told to use a file name the task mentions (PR #34).
+Rerunning the full golden set (rows 7 and 8 of 11.6), counting runs where the file named in the
+goal exists in the saved sandbox:
+
+| | Feature runs writing the goal's file | All runs writing it |
+|---|---|---|
+| Before (6-run check, constrained) | 0 of 4 | n/a (not measured for all tasks) |
+| Row 7, constrained + template + goal | 2 of 10 | 8 of 16 |
+| Row 8, default + goal | 3 of 10 | 7 of 16 |
+
+A clear but small effect, on ten feature runs per row, against a check of only four before. The
+bug-fix and clarification tasks name a file that already exists (seed) or is easy to guess, so
+their numbers say little about the fix. The success count did not move (0 of 16 in both rows), so
+the gap was real but was not what was holding results at zero: the model, not the handoff, is
+still the limit. A design note: the Coder gains no new tool access, only more of the user's own
+task text, which already passed the input guardrail.
 
 ## 12. Wiring audit: what is built versus what runs
 

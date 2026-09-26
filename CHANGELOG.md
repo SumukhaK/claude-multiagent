@@ -79,3 +79,10 @@ failure moved from "no valid JSON" to "the model's tests do not pass". *Learned:
 readings were wrong and were corrected (the failure breakdown, where the placeholder paths came
 from, the template alone being the lever, the token saving); a worked example hurts and a
 placeholder in a prompt is copied; the model, not the plumbing, is now the limit.
+
+## After Phase 11, continued — failure artifacts and the goal handoff · #33 #34
+The evaluation harness now keeps the evidence of every failed run (#33). Inspecting it showed the
+Coder had never been told the task's file name; it now is (#34). *Result:* the named file appears
+far more often, and the score is still 0 of 16. *Learned:* an evaluation that discards its
+evidence cannot explain its own results; and fixing a real pipeline bug can be worth doing and
+still not move the headline.
