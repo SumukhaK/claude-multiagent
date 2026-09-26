@@ -51,6 +51,16 @@ def get_tracer() -> Tracer:
     return trace.get_tracer("multiagent")
 
 
+MAX_ERROR_CHARS = 300
+
+
+def truncate_error(error: str) -> str:
+    """Bound error text: validation errors quote the model's output, which can hold user code."""
+    if len(error) <= MAX_ERROR_CHARS:
+        return error
+    return error[:MAX_ERROR_CHARS] + "...[truncated]"
+
+
 class FailureLog:
     """Appends one structured JSON line per failed agent/tool call, for later evaluation."""
 
@@ -62,7 +72,7 @@ class FailureLog:
         entry = {
             "timestamp": time.time(),
             "call": call_name,
-            "error": error,
+            "error": truncate_error(error),
             "attributes": attributes,
         }
         with self._path.open("a", encoding="utf-8") as handle:

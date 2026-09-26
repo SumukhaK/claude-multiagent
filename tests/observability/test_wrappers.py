@@ -201,3 +201,17 @@ def test_an_unsuccessful_tool_result_is_a_failure_with_its_timeout_flag(tracing)
     failure = tracing.failures()[0]
     assert failure["call"] == "tool.commit"
     assert failure["attributes"]["timed_out"] is True
+
+
+def test_long_error_text_is_truncated_because_validation_errors_can_quote_model_output(tracing):
+    """Pydantic errors embed input_value=...; cap what a failure-log entry can carry of it."""
+    quoted_model_output = "x" * 5000
+    agent = TracedAgent(
+        FakeAgent(_message(MessageStatus.ERROR, quoted_model_output)), tracing.tracer, "coder", tracing.failure_log
+    )
+
+    agent.create_plan("g")
+
+    logged = tracing.failures()[0]["error"]
+    assert len(logged) < 500
+    assert logged.endswith("...[truncated]")

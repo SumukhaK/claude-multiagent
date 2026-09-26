@@ -17,12 +17,12 @@ from typing import Any
 from opentelemetry.trace import Span, Status, StatusCode, Tracer
 
 from multiagent.llm.base import LLMClient, LLMResponse
-from multiagent.observability.tracing import FailureLog, traced_call
+from multiagent.observability.tracing import FailureLog, traced_call, truncate_error
 
 
 def _fail(span: Span, failure_log: FailureLog | None, name: str, error: str, attributes: dict) -> None:
     """Record a failure that came back as a return value rather than as an exception."""
-    span.set_status(Status(StatusCode.ERROR, error))
+    span.set_status(Status(StatusCode.ERROR, truncate_error(error)))
     if failure_log is not None:
         failure_log.record(call_name=name, error=error, attributes=attributes)
 
