@@ -69,10 +69,13 @@ class MeteredLLMClient:
         self._meter = meter
         self._role = role
 
-    def generate(self, prompt: str, *, max_tokens: int = 512) -> LLMResponse:
+    def generate(
+        self, prompt: str, *, max_tokens: int = 512, json_schema: dict | None = None
+    ) -> LLMResponse:
         started = time.monotonic()
+        extra = {} if json_schema is None else {"json_schema": json_schema}
         try:
-            response = self._inner.generate(prompt, max_tokens=max_tokens)
+            response = self._inner.generate(prompt, max_tokens=max_tokens, **extra)
         except Exception as exc:
             self._meter.llm_calls.append(
                 LLMCall(self._role, 0, 0, time.monotonic() - started, error=str(exc))

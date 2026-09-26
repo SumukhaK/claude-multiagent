@@ -68,3 +68,28 @@ def test_generate_sends_configured_max_tokens_as_n_predict():
     assert captured["payload"]["n_predict"] == 64
     assert captured["payload"]["prompt"] == "hi"
     assert captured["payload"]["stream"] is False
+
+
+def _capture_payload(**generate_kwargs) -> dict:
+    import json
+
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["payload"] = json.loads(request.content)
+        return httpx.Response(200, json={"content": "", "tokens_evaluated": 0, "tokens_predicted": 0})
+
+    LlamaServerClient(base_url="http://127.0.0.1:8080").generate(
+        "hi", client=_client_with(handler), **generate_kwargs
+    )
+    return captured["payload"]
+
+
+def test_generate_forwards_a_json_schema_so_the_server_constrains_decoding():
+    schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]}
+
+    assert _capture_payload(json_schema=schema)["json_schema"] == schema
+
+
+def test_generate_sends_no_json_schema_field_by_default():
+    assert "json_schema" not in _capture_payload()

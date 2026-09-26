@@ -94,3 +94,17 @@ def test_generate_hits_the_api_generate_endpoint():
     client.generate("hi", client=_client_with(handler))
 
     assert captured["url"].endswith("/api/generate")
+
+
+def test_generate_forwards_a_json_schema_as_ollamas_format_field():
+    captured = {}
+    schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["payload"] = json.loads(request.content)
+        return httpx.Response(200, json={"response": "{}", "prompt_eval_count": 1, "eval_count": 1})
+
+    client = OllamaClient(host="http://127.0.0.1:11434", model="m", use_gpu=False)
+    client.generate("hi", json_schema=schema, client=_client_with(handler))
+
+    assert captured["payload"]["format"] == schema

@@ -25,9 +25,13 @@ class FakeLLMClient:
         self._text = text
         self._error = error
         self.last_prompt: str | None = None
+        self.last_json_schema: dict | None = None
 
-    def generate(self, prompt: str, *, max_tokens: int = 512) -> LLMResponse:
+    def generate(
+        self, prompt: str, *, max_tokens: int = 512, json_schema: dict | None = None
+    ) -> LLMResponse:
         self.last_prompt = prompt
+        self.last_json_schema = json_schema
         if self._error is not None:
             raise self._error
         return LLMResponse(text=self._text, prompt_tokens=10, completion_tokens=10, latency_seconds=0.1)
@@ -188,3 +192,34 @@ def test_review_step_includes_the_step_and_report_in_the_prompt():
     agent.review_step(PlanStep(step_id=1, description="add add()"), _report())
 
     assert "add add()" in llm.last_prompt
+
+
+_REVIEW_TEXT = '{"kind": "step_review", "step_id": 1, "approved": true, "feedback": "ok"}'
+_STEP = PlanStep(step_id=1, description="d", edge_cases=[])
+_REPORT = CodeChangeReport(
+    step_id=1, files_changed=["a.py"], tests_added=["test_a.py"], tests_passed=True, summary="s"
+)
+
+
+def test_planner_sends_no_schema_unless_constrain_json_is_enabled():
+    llm = FakeLLMClient(text='{"kind": "plan", "goal": "g", "steps": [], "clarifying_questions": ["q?"]}')
+
+    PlannerAgent(llm_client=llm, task_id="t").create_plan(goal="g")
+
+    assert llm.last_json_schema is None
+
+
+def test_planner_constrains_planning_to_the_plan_schema():
+    llm = FakeLLMClient(text='{"kind": "plan", "goal": "g", "steps": [], "clarifying_questions": ["q?"]}')
+
+    PlannerAgent(llm_client=llm, task_id="t", constrain_json=True).create_plan(goal="g")
+
+    assert llm.last_json_schema == Plan.model_json_schema()
+
+
+def test_planner_constrains_review_to_the_step_review_schema():
+    llm = FakeLLMClient(text=_REVIEW_TEXT)
+
+    PlannerAgent(llm_client=llm, task_id="t", constrain_json=True).review_step(_STEP, _REPORT)
+
+    assert llm.last_json_schema == StepReview.model_json_schema()

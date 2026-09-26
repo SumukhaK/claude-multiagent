@@ -30,14 +30,21 @@ def build_real_system(
     max_retries: int,
     max_steps: int,
     max_tokens: int,
+    constrain_json: bool = False,
 ) -> Orchestrator:
-    planner = PlannerAgent(MeteredLLMClient(planner_llm, meter, "planner"), "eval", max_tokens=max_tokens)
+    planner = PlannerAgent(
+        MeteredLLMClient(planner_llm, meter, "planner"),
+        "eval",
+        max_tokens=max_tokens,
+        constrain_json=constrain_json,
+    )
     coder = CoderAgent(
         MeteredLLMClient(coder_llm, meter, "coder"),
         WritableFilesystem(sandbox),
         SandboxedPytestRunner(sandbox),
         "eval",
         max_tokens=max_tokens,
+        constrain_json=constrain_json,
     )
     tool = ToolAgent(
         git_tools=MeteredTools(LocalEvalGitTools(sandbox), meter),
