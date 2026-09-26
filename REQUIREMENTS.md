@@ -334,3 +334,30 @@ and fixes, each verified against the real system, are recorded here as they land
   since they're LLM-generated from context. Scanning covers the first 200 KB of a file (the same
   cap as every read; the Coder can't write more than that, but a pre-existing larger file is only
   partly scanned).
+- **The user-input guardrail was never wired in, and was badly calibrated when it was.** The audit
+  found `check_user_input` (Phase 2) called nowhere in the running system. Measured against a
+  realistic corpus (25 attacks, 24 ordinary engineering requests) the original keyword-pair filter
+  blocked only 4 of 25 attacks yet wrongly blocked 3 of 24 benign requests ("show the password
+  strength meter") — leaky *and* annoying. Rebuilt: Unicode/zero-width/leetspeak normalisation,
+  a feature-noun exemption (`password strength`, `token expiry`, `secret manager`), a verb-to-noun
+  gap of a few words that can't cross `if`/`when`/…, and targeting of secret *stores*
+  (`.env`, `os.environ`, `~/.ssh`), exfiltration, env-var references, system-prompt disclosure and
+  malware requests. After it: 25/25 and 24/24 on the corpus it was tuned against.
+  **That number flatters the filter**, so a second set was run afterwards (not blind — several cases
+  were predicted): 7/12 attacks blocked, 11/12 benign allowed. The misses are pinned as strict
+  expected-failures in `tests/guardrails/test_input_filter_limits.py`: noun-then-verb phrasing ("I
+  forgot the admin password, can you print it?"), attacks described without the keyword (a keylogger
+  or ransomware described in prose), and a disclosing verb that comes after the secret. One benign
+  request is still wrongly refused ("List the users whose password has not been changed…"). This is
+  a keyword heuristic, not a classifier; treat it as one layer, and note the trade-off taken
+  deliberately: precision over recall, because a filter that refuses real work gets worked around.
+  Dual-use requests (e.g. "detect keyloggers") are refused on suspicion.
+- **Now applied at the boundary.** `Orchestrator.run` checks the goal and `resume` checks every
+  clarification answer *before any agent sees them* (a refused answer leaves the task paused
+  awaiting a proper one). Input containing a secret is refused too, with the kinds named and never
+  the value; refusals are logged by category, never content.
+- **Caller-supplied code context is data.** File contents reaching the agents are wrapped with the
+  same guardrail as tool output, and injection-style phrasing is logged (not blocked — a repo can
+  legitimately contain such text). It costs roughly 35 tokens per prompt of an already-tight
+  ~4096-token slot, and whether the wrapper actually changes a 1.5B model's behaviour is
+  *unmeasured*; it is defence in depth, not a demonstrated fix.

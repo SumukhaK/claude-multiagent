@@ -22,6 +22,7 @@ clarification, a completed task -- never plans (unverified proposals) or failed 
 would poison future recall. Memory calls are not orchestration steps and don't spend the budget.
 """
 
+import logging
 from collections.abc import Sequence
 from typing import Protocol
 
@@ -35,7 +36,13 @@ from multiagent.contracts.messages import (
     Plan,
     PlanStep,
 )
+from multiagent.guardrails.input_filter import (
+    sanitize_tool_output,
+    scan_tool_output_for_injection_markers,
+)
 from multiagent.orchestrator.state import OrchestratorState
+
+logger = logging.getLogger(__name__)
 
 
 class PlannerAgentProtocol(Protocol):
@@ -77,6 +84,12 @@ def build_orchestrator_graph(
         """The caller's code context plus any recalled memory relevant to `query` (already
         size-capped and guardrail-wrapped by the memory store)."""
         base = state.get("code_context", "")
+        if base:
+            # File contents are data, never instructions (CLAUDE.md §4). Flag injection-style
+            # phrasing for the log but don't block: a repo may legitimately contain such text.
+            if markers := scan_tool_output_for_injection_markers(base):
+                logger.warning("code context contains injection-style phrasing: %s", ", ".join(markers))
+            base = sanitize_tool_output(base)
         recalled = memory.recall_context(query) if memory is not None else ""
         return f"{base}\n\n{recalled}" if base and recalled else base or recalled
 

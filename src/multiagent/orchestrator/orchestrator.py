@@ -7,11 +7,13 @@ restart), so no external database is needed, matching the project's local-first,
 constraint.
 """
 
+import logging
 from typing import Any
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
+from multiagent.guardrails.input_filter import check_user_input
 from multiagent.orchestrator.graph import (
     CoderAgentProtocol,
     MemoryProtocol,
@@ -20,6 +22,8 @@ from multiagent.orchestrator.graph import (
     build_orchestrator_graph,
 )
 from multiagent.orchestrator.state import build_initial_state
+
+logger = logging.getLogger(__name__)
 
 
 class Orchestrator:
@@ -39,7 +43,20 @@ class Orchestrator:
         )
         self._compiled = graph.compile(checkpointer=MemorySaver())
 
+    @staticmethod
+    def _refuse_if_disallowed(user_text: str) -> dict[str, Any] | None:
+        """Guardrail on everything the user types (the goal and every clarification answer),
+        checked before any agent sees it. Logs the category only, never the text: it may itself
+        contain the secret being refused."""
+        verdict = check_user_input(user_text)
+        if verdict.allowed:
+            return None
+        logger.warning("input refused by guardrail (%s)", verdict.category)
+        return {"status": "refused", "error": verdict.reason, "category": verdict.category}
+
     def run(self, task_id: str, goal: str, branch_name: str, code_context: str = "") -> dict[str, Any]:
+        if refusal := self._refuse_if_disallowed(goal):
+            return refusal
         config = {"configurable": {"thread_id": task_id}}
         initial_state = build_initial_state(
             task_id=task_id, goal=goal, branch_name=branch_name, code_context=code_context
@@ -47,6 +64,9 @@ class Orchestrator:
         return self._compiled.invoke(initial_state, config)
 
     def resume(self, task_id: str, answer: str) -> dict[str, Any]:
+        # A refused answer never reaches the graph, so the task stays paused waiting for a proper one.
+        if refusal := self._refuse_if_disallowed(answer):
+            return refusal
         config = {"configurable": {"thread_id": task_id}}
         return self._compiled.invoke(Command(resume=answer), config)
 

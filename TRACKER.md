@@ -348,3 +348,16 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   at runtime so no token-shaped literal ever reaches this public repo (GitHub push protection).
   Scanned all 95 tracked files as a false-positive check: zero findings. 38 new tests, 346 passing.
   Remaining: wire the input guardrail into the orchestrator, subprocess hardening.
+- 2026-09-26 — Third Phase 9 component landed on `feat/orchestrator-input-guardrails`: the input
+  guardrail is finally wired in (the audit found it was called nowhere), applied to the goal and
+  every clarification answer before any agent sees them, with secret-in-input refusal and
+  category-only logging; caller code context is wrapped as data. Before wiring it in, measured the
+  existing filter on a realistic corpus: it blocked 4 of 25 attacks and wrongly blocked 3 of 24
+  benign requests. Rebuilt it (normalisation, feature-noun exemption, tighter verb-to-noun gap,
+  secret-store/exfiltration/malware patterns): 25/25 and 24/24 — but that corpus was tuned against,
+  so a second, not-blind set was run: 7/12 attacks blocked, 11/12 benign allowed; the 6 remaining
+  failures are pinned as strict xfails so the limits are documented in code. Hit a nasty tooling
+  hazard on the way: scripted patching silently turned regex `\b` into backspace characters
+  (invisible, and lint-clean), caught only because the output showed the word boundaries missing —
+  now checked for control characters. 75 new tests, 421 passing (+6 expected failures).
+  Remaining: subprocess hardening and the written audit.
