@@ -131,7 +131,7 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 |---|---|---|
 | 0 | Project scaffolding: CLAUDE.md, README/REQUIREMENTS/NON_TECHNICAL/TRACKER docs, `config/settings.py`, `.env.example`, `pyproject.toml`, first test, GitHub repo created & pushed | ✅ |
 | 1 | Local model serving: tuned `llama-server` launch config (GPU offload, flash-attn, quantized KV cache, continuous batching), Ollama CPU-only helper for the tool model, a thin LLM client wrapper, smoke-test + micro-benchmark (tok/s, latency, VRAM) | ✅ |
-| 2 | Shared infra: pydantic JSON schemas for inter-agent messages, OpenTelemetry logging/tracing wrapper, guardrail input filter, config loader — all unit-tested with a stubbed LLM client | 🔶 |
+| 2 | Shared infra: pydantic JSON schemas for inter-agent messages, OpenTelemetry logging/tracing wrapper, guardrail input filter, config loader — all unit-tested with a stubbed LLM client | ✅ |
 | 3 | Planning agent: read-only filesystem tools, clarification-question flow, plan schema + validator, prompt template | ⬜ |
 | 4 | Coding agent: TDD-enforcing workflow, sandboxed file write/edit tool, sandboxed pytest execution tool, mandatory step-review gate | ⬜ |
 | 5 | Tool agent: git/gh wrapper tools (branch/commit/push/PR), allowlisted commands only, hardware/emulator test runner (best-effort/stretch), retry + timeout + circuit-breaker logic | ⬜ |
@@ -171,3 +171,9 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   (OpenTelemetry spans + a structured JSON failure log for every agent/tool call). Console
   exporter only for now — no cloud account needed. 6 new tests using `InMemorySpanExporter`, all
   passing. New dependencies: `opentelemetry-api`, `opentelemetry-sdk`.
+- 2026-09-26 — Third and final Phase 2 component landed on `feat/guardrails-input-filter`:
+  `check_user_input` (blocks secret/credential-fishing requests), `sanitize_tool_output` (always
+  wraps tool output as inert data), and `scan_tool_output_for_injection_markers` (flags
+  instruction-like phrasing in tool output for logging, without blocking legitimate output) in
+  `multiagent/guardrails/input_filter.py`. 9 new tests, all passing. **Phase 2 complete** — 49
+  tests passing overall.

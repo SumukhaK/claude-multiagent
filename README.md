@@ -88,6 +88,9 @@ note per phase as it lands.
   quantized KV cache, continuous batching) and a CPU-only Ollama client for the Tool agent, both
   behind a shared `LLMClient` interface. Verified on this laptop's actual GPU — see
   [REQUIREMENTS.md](REQUIREMENTS.md#3-hardware--local-inference-design) for the measured numbers.
+- **Phase 2 — Shared infra**: the strict `AgentMessage` JSON contract sub-agents communicate
+  through, OpenTelemetry tracing + a structured failure log for every agent/tool call, and a
+  guardrail filter blocking secret-fishing requests while treating all tool output as inert data.
 
 ## Running locally
 
