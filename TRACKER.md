@@ -145,7 +145,7 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 | 5 | Coding agent: TDD-enforcing workflow, sandboxed file write/edit tool, sandboxed pytest execution tool, mandatory step-review gate | ✅ |
 | 6 | Tool agent: git/gh wrapper tools (branch/commit/push/PR), allowlisted commands only, hardware/emulator test runner (best-effort/stretch), retry + timeout + circuit-breaker logic | ✅ |
 | 7 | Orchestrator: LangGraph state machine wiring all three agents, human-in-the-loop clarification interrupt, retry/escalation policy, hard step-budget circuit breaker, end-to-end test | ✅ |
-| 8 | Memory layer: local mem0 (local embeddings via `nomic-embed-text`, local vector store), wired into Planner + Coder | ⬜ |
+| 8 | Memory layer: local mem0 (local embeddings via `nomic-embed-text`, local vector store), wired into Planner + Coder | 🔶 |
 | 9 | Guardrails & security hardening pass: expand injection/secret-exfiltration filters, sandbox/tool-allowlist audit | ⬜ |
 | 10 | Evaluation harness: golden task set, metrics (latency, token usage, tool success rate, hallucination rate + recovery, cost proxy), results appended to `README.md` | ⬜ |
 | 11 | Polish: finalize architecture diagram, changelog, demo | ⬜ |
@@ -307,3 +307,15 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   file," which the schema's TDD check can't catch since it only requires a test file to *exist*,
   not that its content is a real test) in REQUIREMENTS.md §8. 11 new tests, 213 tests passing
   overall. **Phase 7 complete — all three sub-agents are now wired into one working loop.**
+- 2026-09-26 — Phase 8 started. First component landed on `feat/memory-store`: `MemoryStore`
+  (`multiagent/memory/store.py`) — mem0 with Ollama `nomic-embed-text` embeddings and an on-disk
+  qdrant store, no LLM configured (`infer=False`), telemetry disabled before mem0 is imported,
+  recall capped and wrapped with the tool-output guardrail. Read mem0's real API first and
+  verified against the real Ollama embedder (`scripts/verify_memory.py`): store ~0.4s/4 memories,
+  recall ~0.02s, GPU +4 MiB. Live checking found what the fakes couldn't — local qdrant allows one
+  client per folder per process, so per-project clients crashed; fixed with
+  `MemoryStore.for_project()` (TDD: test first, then fix). Also tested and rejected the hypothesis
+  that nomic task prefixes would improve ranking (6/6 without vs 5/6 with). New dependencies:
+  `mem0ai` (pulls qdrant-client, openai, posthog) and `ollama` (mem0's Ollama embedder requires
+  the official client). 14 new tests, 227 passing overall. Orchestrator wiring is the next
+  component.
