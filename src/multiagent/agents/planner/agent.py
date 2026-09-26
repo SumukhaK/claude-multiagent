@@ -20,7 +20,18 @@ import httpx
 
 from multiagent.agents.planner.prompts import render_planner_prompt
 from multiagent.agents.planner.response_parser import PlanParsingError, parse_plan_response
-from multiagent.contracts.messages import AgentMessage, AgentName, MessageStatus
+from multiagent.agents.planner.review_parser import (
+    StepReviewParsingError,
+    parse_step_review_response,
+)
+from multiagent.agents.planner.review_prompts import render_review_prompt
+from multiagent.contracts.messages import (
+    AgentMessage,
+    AgentName,
+    CodeChangeReport,
+    MessageStatus,
+    PlanStep,
+)
 from multiagent.llm.base import LLMClient
 
 
@@ -70,3 +81,33 @@ class PlannerAgent:
             )
 
         return AgentMessage(agent=AgentName.PLANNER, task_id=self._task_id, status=status, payload=plan)
+
+    def review_step(
+        self, step: PlanStep, report: CodeChangeReport, code_context: str = ""
+    ) -> AgentMessage:
+        """Review one completed step. Both an approval and a rejection are status "ok" — a
+        rejection is useful information for the orchestrator's retry policy, not a system error,
+        the same way the Coder's own tests_passed=False isn't one either."""
+        prompt = render_review_prompt(step=step, report=report, code_context=code_context)
+
+        try:
+            response = self._llm_client.generate(prompt, max_tokens=self._max_tokens)
+        except httpx.HTTPError as exc:
+            return AgentMessage(
+                agent=AgentName.PLANNER,
+                task_id=self._task_id,
+                status=MessageStatus.ERROR,
+                error=f"planner LLM call failed: {exc}",
+            )
+
+        try:
+            review = parse_step_review_response(response.text)
+        except StepReviewParsingError as exc:
+            return AgentMessage(
+                agent=AgentName.PLANNER,
+                task_id=self._task_id,
+                status=MessageStatus.ERROR,
+                error=str(exc),
+            )
+
+        return AgentMessage(agent=AgentName.PLANNER, task_id=self._task_id, status=MessageStatus.OK, payload=review)

@@ -216,3 +216,14 @@ with tool output in it, so compaction is load-bearing, not optional headroom.
   actually do reliably (short generation vs. nested schema-constrained JSON with real code
   content) is itself a design decision, and this project deliberately narrowed the Tool agent's
   LLM usage to exactly the part that's reliable, keeping every git/gh action itself deterministic.
+- **The step-review gate's semantic judgment is shallow — verified, not assumed, and it directly
+  shapes how Phase 7's orchestrator must use it.** Live-verified (Phase 7): given a step
+  description asking for `add(a, b)`, and a `CodeChangeReport` whose own summary says the test
+  actually asserts `calculate(2, 3) == 5` — an explicit description/summary mismatch, spelled out
+  in plain text in the prompt — the Planner's review still came back `approved: true` with
+  feedback claiming "the files changed and the summary accurately reflect the step's
+  description." It didn't catch a mismatch that was stated outright, not hidden. Conclusion: this
+  model's review approval is not a trustworthy hard gate on its own. The orchestrator (this
+  phase) therefore treats `tests_passed` as the primary, objective gate, and surfaces the
+  Planner's review as an additional signal (a rejection is acted on; an approval is not, by
+  itself, proof of correctness) rather than the deciding vote.
