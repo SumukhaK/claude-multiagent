@@ -123,7 +123,7 @@ def test_implement_step_returns_error_when_the_proposal_has_no_test_files(agent_
     message = agent.implement_step(PlanStep(step_id=1, description="add add()"))
 
     assert message.status == MessageStatus.ERROR
-    assert "TDD" in message.error
+    assert "test_files" in message.error
 
 
 def test_implement_step_rejects_a_sandbox_escape_without_writing_any_file(tmp_path, agent_factory):

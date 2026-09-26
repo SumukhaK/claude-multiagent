@@ -8,7 +8,7 @@ IS part of the inter-agent contract) before anything else sees it.
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 
 class ProposedFile(BaseModel):
@@ -23,14 +23,7 @@ class CodeChangeProposal(BaseModel):
 
     kind: Literal["code_change"] = "code_change"
     step_id: int
-    test_files: list[ProposedFile] = Field(default_factory=list)
+    # min_length lives in the schema (not a Python validator) so constrained decoding enforces it
+    test_files: list[ProposedFile] = Field(min_length=1)  # TDD is mandatory
     implementation_files: list[ProposedFile] = Field(default_factory=list)
     summary: str
-
-    @model_validator(mode="after")
-    def _tdd_requires_at_least_one_test_file(self) -> "CodeChangeProposal":
-        if not self.test_files:
-            raise ValueError(
-                "a code change proposal must include at least one test file (TDD is mandatory)"
-            )
-        return self
