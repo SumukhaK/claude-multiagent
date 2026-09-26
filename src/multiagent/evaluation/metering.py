@@ -24,6 +24,7 @@ class LLMCall:
     completion_tokens: int
     latency_seconds: float
     error: str | None = None
+    response_text: str = ""  # only filled when the meter was asked to keep responses
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,7 @@ class ToolCall:
 
 @dataclass
 class Meter:
+    keep_responses: bool = False  # keep raw model text on each LLMCall (for failure artifacts)
     llm_calls: list[LLMCall] = field(default_factory=list)
     agent_calls: list[AgentCall] = field(default_factory=list)
     tool_calls: list[ToolCall] = field(default_factory=list)
@@ -87,6 +89,7 @@ class MeteredLLMClient:
                 response.prompt_tokens,
                 response.completion_tokens,
                 response.latency_seconds,
+                response_text=response.text if self._meter.keep_responses else "",
             )
         )
         return response

@@ -468,6 +468,10 @@ Design choices worth knowing:
   excluded from tool success so a stub can't inflate the rate.
 - **Memory is off** so tasks are independent of each other.
 - **A crash in one run is recorded as `crashed`** and never aborts the suite.
+- **Runs that do not succeed keep their evidence** under `evals/artifacts/<stamp>/<task>-<n>/`
+  (gitignored, local debugging only): `summary.json` (outcome, error, the hidden test's output,
+  per-step reports), `llm_responses.jsonl` (every raw model response; prompts are not kept) and a
+  copy of the sandbox without `.git`. Successful and correctly refused runs leave nothing.
 - **Orchestrator budget for evaluation is 12 steps** (not the default 25), to bound a run that is
   going nowhere; the model's per-response token cap is 1200.
 - **Not measured, on purpose:** marginal cost in dollars (local inference is $0 and no reference
@@ -570,8 +574,8 @@ not a leaderboard. What the map shows:
    line for this hardware and model.
 6. **One false success** (`feature_add#1`, row 5): the orchestrator reported done, the Coder's own
    tests passed and the reviewer approved, but the hidden acceptance test failed. I could not
-   inspect why, because the harness discards each sandbox. Recording the failing proposals is the
-   obvious next improvement to the harness; it is not done.
+   inspect why, because the harness discarded each sandbox. It now keeps them (11.7); the false
+   success has not recurred since, so this one remains unexplained.
 
 **Corrections made during this investigation** (each fixed in the docs where it appeared): the
 baseline breakdown was first counted by agent instead of by error text (14 -> 11 no-JSON, PR #27);
@@ -586,6 +590,23 @@ the prompt was also informed by the golden-run failure classes, so the golden se
 held-out test of those changes. "Fake test" counts a run if *any* proposed test file lacks a
 `test_` function. The row 4 run overlapped with a full test-suite run on the same machine, so its
 timings are slightly inflated. None of this changes the headline: 0/16.
+
+### 11.7 A first look inside failed runs
+
+With artifacts kept, a 6-run check (constrained + words prompt + chat template; 3 tasks x 2)
+showed something the numbers could not: **in all 4 feature runs the file named in the task was
+never written**. The goal says "in `calc.py`" (or `fizz.py`); the Planner's step ("Define the add
+function...") drops it; the Coder is given only the step, never the original goal, so it invents
+`my_add.py`, `add.py`, `my_module.py`. Every feature task's hidden test imports from the named
+file, so those runs could not pass however good the model was. The two bug-fix runs did touch the
+named file (`stats.py`), but only because it already exists as a seed file. Other things visible
+now: file names with spaces and directories, tests such as `def test_add(x): assert y(x) ...`, and
+content with broken string escapes.
+
+Caveats: six runs, one configuration; this is evidence of a pipeline gap, not a measured share of
+the 0/16. It also means earlier comparisons between configurations were partly measuring a
+constraint no model could satisfy. Not fixed here: giving the Coder the goal is a design change
+(what each agent is allowed to see) and is proposed separately.
 
 ## 12. Wiring audit: what is built versus what runs
 

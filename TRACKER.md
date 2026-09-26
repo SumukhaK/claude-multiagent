@@ -429,3 +429,8 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   made an unconstrained model invent JSON shapes. Four corrections to earlier claims recorded in
   §11.6. Not done: keeping failing proposals to explain the false success; Planner prompt still
   has a `"..."` shape line.
+- 2026-09-26 — Failure artifacts kept (`feat/eval-failure-artifacts`). Every run that does not
+  succeed now leaves its raw model responses, the hidden test's output and a copy of the sandbox
+  under a gitignored `evals/artifacts/`. First real use found a pipeline gap: the Coder never sees
+  the goal, so the file named in a feature task was not written in 4 of 4 feature runs (REQUIREMENTS
+  §11.7). Not fixed here; proposed separately. The earlier false success has not recurred.
