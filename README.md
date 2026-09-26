@@ -100,6 +100,11 @@ note per phase as it lands.
   slot, so Planner/Coder each get ~4096 tokens, not the full 8192) and compacted before it would
   overflow — stale tool output evicted first, then older turns summarized. See
   [REQUIREMENTS.md §6](REQUIREMENTS.md#6-context-engineering-treat-context-as-a-budget).
+- **Phase 4 — Planning agent**: a sandboxed read-only filesystem tool, a prompt template, a
+  response parser (handles this model's `<think>` reasoning block and malformed/truncated JSON),
+  and `PlannerAgent`, composing them into "produce a plan or ask for clarification". Live-verified
+  against the real local model, which surfaced a real, documented limitation — see
+  [REQUIREMENTS.md §8](REQUIREMENTS.md#8-known-limitations-measured-not-assumed).
 
 ## Running locally
 
