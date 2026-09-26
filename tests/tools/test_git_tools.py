@@ -148,3 +148,93 @@ def test_create_pull_request_reports_gh_failure(repo, monkeypatch):
 
     assert result.success is False
     assert "no commits" in result.output
+
+
+AWS_KEY = "AKI" + "A" + "ABCDEFGH" + "IJKLMNOP"  # assembled at runtime: no token-shaped literal in source
+
+
+def _staged_files(repo) -> str:
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"], cwd=repo, capture_output=True, text=True, check=True
+    )
+    return result.stdout.strip()
+
+
+def test_commit_refuses_a_file_containing_a_secret_without_echoing_it(repo):
+    (repo / "config.py").write_text(f"KEY = '{AWS_KEY}'\n", encoding="utf-8")
+
+    result = GitTools(repo).commit("add config", ["config.py"])
+
+    assert result.success is False
+    assert "aws-access-key" in result.output
+    assert AWS_KEY not in result.output
+    assert _staged_files(repo) == ""
+
+
+def test_commit_refuses_protected_files_even_when_named_explicitly(repo):
+    (repo / ".env").write_text("A=1\n", encoding="utf-8")
+
+    result = GitTools(repo).commit("add env", [".env"])
+
+    assert result.success is False
+    assert "protected" in result.output
+    assert _staged_files(repo) == ""
+
+
+@pytest.mark.parametrize("path", ["src", ".", "missing.txt", "../outside.txt"])
+def test_commit_only_stages_explicit_existing_files_inside_the_repo(repo, path):
+    (repo / "src").mkdir()
+    (repo / "src" / "a.py").write_text("x = 1\n", encoding="utf-8")
+
+    result = GitTools(repo).commit("add", [path])
+
+    assert result.success is False
+    assert _staged_files(repo) == ""
+
+
+def test_commit_never_lets_a_path_be_read_as_a_git_option(repo):
+    """`git add -A` would stage everything, including files the caller never named."""
+    (repo / "untracked.txt").write_text("x\n", encoding="utf-8")
+
+    result = GitTools(repo).commit("add", ["-A"])
+
+    assert result.success is False
+    assert _staged_files(repo) == ""
+
+
+def test_commit_separates_paths_from_options_with_a_double_dash(repo, monkeypatch):
+    (repo / "a.txt").write_text("x\n", encoding="utf-8")
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    GitTools(repo).commit("add a", ["a.txt"])
+
+    assert calls[0] == ["git", "add", "--", "a.txt"]
+
+
+def test_commit_refuses_a_message_containing_a_secret(repo):
+    (repo / "a.txt").write_text("x\n", encoding="utf-8")
+
+    result = GitTools(repo).commit(f"add key {AWS_KEY}", ["a.txt"])
+
+    assert result.success is False
+    assert AWS_KEY not in result.output
+    assert _staged_files(repo) == ""
+
+
+@pytest.mark.parametrize(("title", "body"), [(f"key {AWS_KEY}", "ok"), ("ok", f"the key is {AWS_KEY}")])
+def test_create_pull_request_refuses_a_title_or_body_containing_a_secret(repo, monkeypatch, title, body):
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("gh must not be invoked when the PR text contains a secret")
+
+    monkeypatch.setattr(subprocess, "run", fail_if_called)
+
+    result = GitTools(repo).create_pull_request(title=title, body=body)
+
+    assert result.success is False
+    assert AWS_KEY not in result.output
