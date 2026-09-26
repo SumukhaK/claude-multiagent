@@ -143,7 +143,7 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 | 3 | Context engineering: per-agent `ContextManager` (token budget, tool-history eviction, summarization compaction), hardware-derived budget helpers for the llama-server and Ollama backends, Ollama client now sets `num_ctx` explicitly | ✅ |
 | 4 | Planning agent: read-only filesystem tools, clarification-question flow, plan schema + validator, prompt template | ✅ |
 | 5 | Coding agent: TDD-enforcing workflow, sandboxed file write/edit tool, sandboxed pytest execution tool, mandatory step-review gate | ✅ |
-| 6 | Tool agent: git/gh wrapper tools (branch/commit/push/PR), allowlisted commands only, hardware/emulator test runner (best-effort/stretch), retry + timeout + circuit-breaker logic | ⬜ |
+| 6 | Tool agent: git/gh wrapper tools (branch/commit/push/PR), allowlisted commands only, hardware/emulator test runner (best-effort/stretch), retry + timeout + circuit-breaker logic | 🔶 |
 | 7 | Orchestrator: LangGraph state machine wiring all three agents, human-in-the-loop clarification interrupt, retry/escalation policy, hard step-budget circuit breaker, end-to-end test | ⬜ |
 | 8 | Memory layer: local mem0 (local embeddings via `nomic-embed-text`, local vector store), wired into Planner + Coder | ⬜ |
 | 9 | Guardrails & security hardening pass: expand injection/secret-exfiltration filters, sandbox/tool-allowlist audit | ⬜ |
@@ -251,3 +251,12 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   content, and — reassuringly — the sandbox validation correctly caught and blocked a real,
   unpredictable (accidental, not malicious) absolute-path proposal from the model itself before
   writing anything. 27 net new tests, 145 tests passing overall. **Phase 5 complete.**
+- 2026-09-26 — Phase 6 started, first component landed on `feat/git-tools`: `GitTools`
+  (`multiagent/tools/git_tools.py`) — a fixed set of purpose-built operations
+  (`create_branch`/`checkout`/`commit`/`push`/`create_pull_request`), no generic
+  "run this git command" passthrough, so least privilege is structural here too. Every command
+  is an argv list (never a shell string), and branch names are rejected outright if they start
+  with `-` (a real, known git argument-injection class, not a hypothetical). Tests run
+  `create_branch`/`commit` for real against a throwaway local repo; `push`/`create_pull_request`
+  are always mocked, since they'd otherwise touch a real network/remote and the user's own
+  authenticated `gh` account. 11 new tests, 156 passing overall.
