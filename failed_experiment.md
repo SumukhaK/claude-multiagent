@@ -5,9 +5,9 @@ system completed **0 of 16** implementation tasks in **every one of eight config
 golden set. This file records what the small model did that caused that, kept apart from the
 failures that were my own bugs, and from what is still unproven.
 
-Everything below is measured from saved runs (`evals/results/`) or from ablation probes, and
-cross-referenced to [REQUIREMENTS.md](REQUIREMENTS.md) §11. Where a claim is an inference rather
-than a measurement, it says so.
+Everything below is measured from saved runs (`evals/results/`) or from ablation probes; the
+detailed measurements are in the appendix at the end. Where a claim is an inference rather than a
+measurement, it says so.
 
 > **In plain English.** We asked a very small AI (1.5 billion "settings"; many of the popular
 > assistants are far larger) to do junior-programmer work on a laptop: make a
@@ -205,5 +205,125 @@ Swapping in a bigger model is that test.
 ## 7. Where the evidence is
 
 - Raw per-run results: `evals/results/*.jsonl` (eight result pairs for the configurations above).
-- The full table, caveats and corrections: [REQUIREMENTS.md](REQUIREMENTS.md) §11.3 to §11.8.
+- The detailed measurements behind this document: the appendix below (they used to live in
+  REQUIREMENTS.md §11, which now describes only the harness and the optional generation controls).
 - A chronological account: [TRACKER.md](TRACKER.md) and [CHANGELOG.md](CHANGELOG.md).
+
+---
+
+## Appendix: the measurements behind this document
+
+Moved here from REQUIREMENTS.md §11 so the requirements describe the system, not the failed model.
+All figures are from ten golden tasks x 2 repeats (16 implementation runs, 4 adversarial), classified
+by the recorded error text, unless stated otherwise.
+
+### A. Which result file is which row of section 2
+
+| Row | Result file (`evals/results/`) |
+|---|---|
+| 1 Baseline | `20260926T133225Z` |
+| 2 Constrained | `20260926T135847Z` |
+| 3 Constrained + worked example | `20260926T142432Z` |
+| 4 Unconstrained + worked example | `20260926T142816Z` |
+| 5 Constrained + reworded prompt + template | `20260926T170626Z` |
+| 6 Unconstrained + reworded prompt + template | `20260926T171156Z` |
+| 7 Row 5 + goal to the Coder | `20260926T175229Z` |
+| 8 Default + goal to the Coder | `20260926T175935Z` |
+
+Token and time figures per implementation run: row 1 about 4,020 tokens and 55s; row 2 about 1,220
+and 6s; row 3 about 1,680 and 9s; row 4 about 4,520 and 83s; row 5 about 1,740 and 16s; row 6 about
+4,540 and 57s; row 7 about 2,550 and 19s; row 8 about 3,510 and 37s (median wall clock). The row 4
+run overlapped with a full test-suite run on the same machine, so its timings are slightly inflated.
+
+### B. Constrained decoding against the baseline (rows 1 and 2)
+
+| | Baseline | Constrained |
+|---|---|---|
+| Task success | 0/16 | 0/16 |
+| Failed with no valid JSON | 11 | 0 |
+| Valid JSON, wrong content | 3 (2 wrong shape, 1 bad path) | 15 (10 invented paths, 5 writes to the sandbox directory itself) |
+| Failed review/tests | 2 | 1 |
+| Tokens per implementation run | ~4,020 | ~1,220 (about 3.3x fewer; an earlier note said 9x, which was wrong) |
+| Median whole-task wall time | ~55s | ~6s (about 9x faster) |
+| Proposed test files with no `test_` function | 3/4 | 11/11 |
+
+The constraint removed the format failure and made failure cheaper, but the content was unusable.
+
+### C. Chat template, prompt wording and thinking (non-golden tasks)
+
+Real `CoderAgent` (real files, real pytest), constrained decoding, four small tasks that are not in
+the golden set, 12 to 28 samples per cell. Test files containing a `test_` function:
+
+| | raw prompt text | chat template |
+|---|---|---|
+| original prompt (shape line with `"..."`) | 0/16 | 1/16 |
+| reworded prompt (rules in words, no `"..."`) | 1/28 | 19/28 (pooled from two runs) |
+
+- The template alone did nothing; the reworded prompt alone did nothing; both together helped. An
+  earlier reading ("the template is the lever") was confounded by a simultaneous prompt change.
+- Pooled comparison, raw against template with the reworded prompt: parsed 20/28 against 28/28,
+  test function present 1/28 against 19/28, own tests passing 1/28 against 5/28.
+- The template the server applies ends with `<think>` plus a newline; keeping or stripping it made
+  no measurable difference (9 against 8 of 16).
+- Letting the model think first and constraining only the final answer: 0 of 12 passing and
+  slower (8.3s against 3.4s per sample).
+- A worked example in the prompt was copied verbatim in 17 of 24 samples; rules only (no example,
+  no `"..."`) parsed 24/24 but produced no test function. Under a grammar the server also did not
+  appear to enforce a `pattern` rule on file names.
+
+### D. Handing the goal to the Coder (rows 7 and 8)
+
+Counting runs where the file named in the goal exists in the saved sandbox:
+
+| | Feature runs writing the goal's file | All runs writing it |
+|---|---|---|
+| Before (6-run check, constrained) | 0 of 4 | not measured |
+| Row 7, constrained + template + goal | 2 of 10 | 8 of 16 |
+| Row 8, default + goal | 3 of 10 | 7 of 16 |
+
+A clear but small effect on small samples. The bug-fix and clarification tasks name a file that
+already exists or is easy to guess, so their numbers say little. The success count stayed at 0 of
+16. In row 8, `feature_safe_divide#1` wrote a correct function into the named `mathx.py` (hidden test
+3 of 3) and was still failed because the file was put in `test_files`.
+
+### E. What inspecting failed runs showed first
+
+In a 6-run check, the file named in the task was never written in all 4 feature runs: the Planner's
+step drops it, the Coder saw only the step, and it invented `my_add.py`, `add.py`, `my_module.py`.
+Every feature task's hidden test imports from the named file, so those runs could not pass.
+
+### F. The Planner prompt (tested, rejected)
+
+24 samples per variant on non-golden goals, real `PlannerAgent`, chat template, constrained decoding:
+
+| Variant | Parsed | `goal` is a placeholder | Single-step plans | Steps per plan | Names the goal's file |
+|---|---|---|---|---|---|
+| Current prompt (shape line) | 23/24 | 2 | 9 | 2.9 | 3 |
+| Same, run again | 24/24 | 2 | 9 | 3.2 | 2 |
+| Format in words only | 23/24 | 0 | 0 | 5.8 | 1 |
+| Words + "a small task is ONE step" | 24/24 | 0 | 1 | 4.6 | 2 |
+
+The reworded prompt makes plans worse: the one defect it fixes (`<restate the goal>` copied into
+`goal`) is harmless because nothing in `src` reads a plan's `goal`, and removing the shape line,
+which shows a one-step plan, roughly doubled the steps. In the saved constrained golden run the 16
+parsed plans averaged 3.4 steps (up to 7). A `maxItems` cap on `steps` in the plan schema is
+honoured by llama-server (longest plan 6 to 2, mean 2.75 to 1.71, nothing unparseable, 24 samples,
+feasibility only); whether it helps success is untested.
+
+### G. Two evaluation attempts were discarded
+
+`LlamaServerProcess` started `llama-server` with an unread `stdout=PIPE`. After roughly 14 runs of
+request logging the pipe buffer filled, the server blocked on its next log write, and every
+completion hung while `/health` still answered ok. Both attempts stalled at the same run, which
+exposed it. Fixed in PR #24 (output goes to `LLAMA_LOG_PATH`) and verified with 300 real
+completions; the published runs are later attempts. An evaluation harness is also a stress test of
+the code it drives, and `/health` ok does not mean the server is serving.
+
+### H. How far to trust these numbers
+
+Twenty runs per row, one pass each, non-deterministic: a small sample with wide intervals, so a
+difference of a few runs is noise. The prompt ablations behind rows 3 and 5 used non-golden tasks
+(12 to 28 samples per cell), but the decision to drop the example and reword the prompt was also
+informed by the golden-run failure classes, so the golden set is not a clean held-out test of those
+changes. "Fake test" counts a run if *any* proposed test file lacks a `test_` function. The
+before/after on file names compares ten runs per row against four.

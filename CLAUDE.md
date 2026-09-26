@@ -40,11 +40,14 @@ This laptop has an **8-core/16-thread CPU, 16GB RAM, and a 4GB-VRAM GTX 1650 Ti*
 inference decision must respect that ceiling — see [REQUIREMENTS.md](REQUIREMENTS.md) §Hardware
 for the measured specs and the reasoning behind the current allocation:
 
-- **Planner + Coder agents** → local `llama-server` (llama.cpp, CUDA build in `E:\LLMCPP`)
-  serving `DeepSeek-R1-Distill-Qwen-1.5B-UD-Q4_K_XL.gguf`, fully GPU-offloaded, flash attention
-  on, quantized KV cache, continuous batching with a small fixed number of slots.
-- **Tool agent** → Ollama `qwen2.5:7b-instruct`, forced **CPU-only**, so it never contends with
-  the GPU-resident model for VRAM.
+- **Planner, Coder and Tool agents** → Ollama `qwen2.5:7b-instruct` (7.6B parameters, Q4_K_M,
+  4.7GB). It does not fit the 4GB GPU entirely, so Ollama splits it between GPU and CPU
+  (measured: about 7.9 tokens/s, about 45% on the GPU). All three agents share one model client
+  so the model is not reloaded between them. `llama-server` (llama.cpp, `E:\LLMCPP`) remains
+  available as an optional backend. The first local model (a 1.5B distilled model on
+  `llama-server`) failed the evaluation: see [failed_experiment.md](failed_experiment.md).
+- A 7B model keeps the CPU busy, so long evaluation runs must not overlap with the user's other
+  work; check utilisation before starting one.
 - Never let total CPU or GPU utilisation approach saturation (~85%+) — this is a laptop the
   user needs to keep using for other things. When in doubt, favour the configuration that
   leaves more headroom over the one that is marginally faster.
@@ -82,15 +85,14 @@ for the measured specs and the reasoning behind the current allocation:
   either replans or reports the failure to the user — it never retries silently forever.
 - **Every agent and tool call is logged and traced** (OpenTelemetry spans, structured JSON logs,
   a dedicated failure log) so runs can be evaluated after the fact.
-  **Status: not yet wired into the running system** (Phase 11 wiring audit) — the tracing module
-  exists and is tested, but nothing calls it. See REQUIREMENTS.md §12.
+  **Status: wired into the stack the evaluation builds** (`build_real_system`); there is no other
+  entrypoint to attach it to yet. See REQUIREMENTS.md §12.
 - **Context is a bounded resource too**, tracked the same way as retries and step budgets. Every
   agent's conversation history is tracked against a token budget (`ContextManager`) and
   compacted — stale tool output evicted first, then older turns summarized — before it would
-  overflow the model's real context window. This isn't optional headroom: because llama-server
-  runs with an explicit `--parallel` slot count, its context is split evenly per slot, so the
-  Planner/Coder each get a few thousand tokens, not the full configured context size. See
-  REQUIREMENTS.md §6.
+  overflow the model's real context window. This isn't optional headroom: the usable context on
+  this hardware is small (a few thousand tokens per agent with the optional `llama-server`
+  backend's explicit slots; the Ollama evaluation uses 8192). See REQUIREMENTS.md §6.
   **Status: not enforced in the running system** (Phase 11 wiring audit) — `ContextManager` is
   built and tested but nothing calls it, and no prompt-size check exists. See REQUIREMENTS.md §12.
 
