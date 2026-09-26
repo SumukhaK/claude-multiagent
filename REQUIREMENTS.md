@@ -567,7 +567,9 @@ default); failures go to `FAILURE_LOG_PATH`. Design decisions:
   and a run that finishes `failed` marks its root span ERROR.
 - **No prompts, responses or raw tool output are recorded**, only names, sizes, token counts,
   statuses and error text: prompts carry the user's code and may carry secrets. Tool failures are
-  logged by return code and timeout flag only.
+  logged by return code and timeout flag only. *Limit:* error text can quote a fragment of the
+  model's output (pydantic validation errors include `input_value=...`), so it is truncated to 300
+  characters, which bounds the exposure but does not remove it; the files are local and gitignored.
 - **Verified end to end** with the real exporter and scripted models: one trace per run, correct
   parent/child nesting (LLM span inside agent span inside run), no prompt text in the output files.
 - **Where it applies:** `build_real_system` and therefore `scripts/run_eval.py`. The project has no
