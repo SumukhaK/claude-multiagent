@@ -40,8 +40,8 @@ def llama_agent_token_budget(settings: Settings, response_reserve: int = 512) ->
 
 
 def ollama_agent_token_budget(settings: Settings, response_reserve: int = 256) -> int:
-    """Usable history budget for the Tool agent's Ollama context window."""
-    return max(settings.ollama_tool_context_size - response_reserve, 0)
+    """Usable history budget for an agent's Ollama context window (all agents share one)."""
+    return max(settings.ollama_agent_context_size - response_reserve, 0)
 
 
 @dataclass(frozen=True)

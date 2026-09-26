@@ -108,3 +108,41 @@ def test_generate_forwards_a_json_schema_as_ollamas_format_field():
     client.generate("hi", json_schema=schema, client=_client_with(handler))
 
     assert captured["payload"]["format"] == schema
+
+
+def _payload_sent_by(client) -> dict:
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["payload"] = json.loads(request.content)
+        return httpx.Response(200, json={"response": "ok", "prompt_eval_count": 1, "eval_count": 1})
+
+    client.generate("hi", client=_client_with(handler))
+    return captured["payload"]
+
+
+def test_agent_client_from_settings_uses_the_shared_agent_model_context_and_gpu_split():
+    from config.settings import Settings
+    from multiagent.llm.ollama_client import agent_client_from_settings
+
+    settings = Settings(_env_file=None, ollama_agent_model="m:1b", ollama_agent_context_size=6000)
+
+    payload = _payload_sent_by(agent_client_from_settings(settings))
+
+    assert payload["model"] == "m:1b"
+    assert payload["options"]["num_ctx"] == 6000
+    assert payload["options"]["num_gpu"] == -1  # let Ollama split the model between GPU and CPU
+
+
+def test_agent_client_from_settings_can_be_overridden_per_call():
+    from config.settings import Settings
+    from multiagent.llm.ollama_client import agent_client_from_settings
+
+    client = agent_client_from_settings(
+        Settings(_env_file=None), model="other:7b", context_size=2048, timeout=30.0
+    )
+
+    payload = _payload_sent_by(client)
+    assert payload["model"] == "other:7b"
+    assert payload["options"]["num_ctx"] == 2048
+    assert client._timeout == 30.0

@@ -35,9 +35,9 @@ def test_llama_agent_token_budget_divides_ctx_size_across_parallel_slots():
 
 
 def test_ollama_agent_token_budget_subtracts_response_reserve():
-    settings = Settings(_env_file=None, ollama_tool_context_size=4096)
+    settings = Settings(_env_file=None, ollama_agent_context_size=8192)
 
-    assert ollama_agent_token_budget(settings, response_reserve=256) == 3840
+    assert ollama_agent_token_budget(settings, response_reserve=256) == 7936
 
 
 def test_add_turn_and_total_tokens_use_the_injected_counter():

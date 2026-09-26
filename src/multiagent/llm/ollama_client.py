@@ -1,11 +1,13 @@
-"""HTTP client for Ollama, used by the Tool agent. Forces CPU-only inference by default so it
-never contends with the GPU-resident llama-server for the laptop's 4GB of VRAM.
+"""HTTP client for Ollama, the backend the Planner, Coder and Tool agent run on. `use_gpu=False`
+forces CPU-only inference; `use_gpu=True` lets Ollama split a model too big for the laptop's 4GB of
+VRAM between GPU and CPU.
 """
 
 import time
 
 import httpx
 
+from config.settings import Settings
 from multiagent.llm.base import LLMResponse
 
 
@@ -70,3 +72,23 @@ class OllamaClient:
             completion_tokens=data.get("eval_count", 0),
             latency_seconds=elapsed,
         )
+
+
+def agent_client_from_settings(
+    settings: Settings,
+    model: str | None = None,
+    context_size: int | None = None,
+    timeout: float | None = None,
+) -> OllamaClient:
+    """The one Ollama client shared by the Planner, Coder and Tool agent, built from settings.
+
+    Sharing one client (same model, same GPU/context options) keeps Ollama from reloading the model
+    every time the agents alternate. Arguments override the settings for a single run.
+    """
+    return OllamaClient(
+        host=settings.ollama_host,
+        model=model or settings.ollama_agent_model,
+        use_gpu=settings.ollama_agent_use_gpu,
+        context_size=context_size or settings.ollama_agent_context_size,
+        timeout=timeout or settings.ollama_agent_timeout,
+    )

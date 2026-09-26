@@ -67,10 +67,14 @@ the work therefore runs on the CPU, which keeps the processor busy: long evaluat
 not overlap with other work on the laptop (§2, hardware headroom).
 
 All three agents share **one Ollama client** (same GPU and context options), because different
-options per agent would make Ollama reload the whole model each time the agents alternate. The
-evaluation script exposes it as `--agent-model`, `--agent-context` (default 8192) and
-`--agent-timeout` (default 900s: at this speed a long reply takes minutes, far past a default HTTP
-timeout). Ollama also serves `nomic-embed-text` for the memory layer (§9).
+options per agent would make Ollama reload the whole model each time the agents alternate.
+`agent_client_from_settings()` (`multiagent/llm/ollama_client.py`) builds it from the settings
+`OLLAMA_AGENT_MODEL` (default `qwen2.5:7b-instruct`), `OLLAMA_AGENT_USE_GPU` (default true),
+`OLLAMA_AGENT_CONTEXT_SIZE` (default 8192) and `OLLAMA_AGENT_TIMEOUT` (default 900s: at this speed
+a long reply takes minutes, far past a default HTTP timeout). The evaluation script can override
+the model, context and timeout for one run (`--agent-model`, `--agent-context`, `--agent-timeout`)
+and select the optional backend with `--llama-server`. Ollama also serves `nomic-embed-text` for
+the memory layer (§9).
 
 **Optional backend: `llama-server` (llama.cpp).** `multiagent/llm/llama_server.py` builds and
 supervises a `llama-server` process from settings (GPU layers, context size, parallel slots,
@@ -128,11 +132,11 @@ compaction is load-bearing, not optional headroom.
 
 - **Every agent's conversation history is a `ContextManager`** (`multiagent/context/manager.py`),
   tracked against a token budget derived from the real, measured hardware split:
-  `llama_agent_token_budget()` for Planner/Coder (ctx_size ÷ parallel slots, minus a response
-  reserve), `ollama_agent_token_budget()` for the Tool agent (its own configured
-  `ollama_tool_context_size`, minus a reserve). The Ollama client now sets `num_ctx` explicitly
-  from that same setting, so the tracked budget matches the model's *actual* runtime context
-  window instead of silently drifting from it.
+  `ollama_agent_token_budget()` for the Ollama agents (the shared `ollama_agent_context_size`,
+  minus a reserve) and `llama_agent_token_budget()` for the optional llama-server backend
+  (ctx_size ÷ parallel slots, minus a response reserve). The Ollama client sets `num_ctx`
+  explicitly from that same setting, so the tracked budget matches the model's *actual* runtime
+  context window instead of silently drifting from it.
 - **Tool-call history is pruned before anything else.** `evict_old_tool_output()` keeps only the
   most recent N tool results verbatim and replaces older ones with a short placeholder — tool
   output (file contents, test logs) is usually the largest and least reusable part of a
@@ -389,10 +393,10 @@ also means results say little about realistic software tasks.
 
 ### 11.2 The harness
 
-`scripts/run_eval.py` runs the agents on an Ollama model (`--agent-model`, e.g.
-`qwen2.5:7b-instruct`; without it the Planner and Coder use `llama-server` and the Tool agent uses
-Ollama), then runs every golden task `--repeats` times (interleaved) through the **real** agent classes, sandboxed
-filesystem and pytest runner, and **real git** against a throwaway repo with a *local bare remote*
+`scripts/run_eval.py` runs the agents on the Ollama model in settings (`qwen2.5:7b-instruct` by
+default; `--agent-model` overrides it and `--llama-server` selects the optional backend for the
+Planner and Coder), then runs every golden task `--repeats` times (interleaved) through the **real**
+agent classes, sandboxed filesystem and pytest runner, and **real git** against a throwaway repo with a *local bare remote*
 — never GitHub. Results stream to `evals/results/<timestamp>.jsonl` as each run finishes, so an
 interrupted run keeps what it has; the aggregate is rendered to `evals/results/<timestamp>.md`
 and, with `--update-readme`, can be published into a marked section of the README.
@@ -418,7 +422,7 @@ Design choices worth knowing:
 
 ### 11.3 Optional generation controls
 
-- **JSON-constrained decoding** (`LLAMA_CONSTRAIN_JSON`, default off; `--constrain-json` on the
+- **JSON-constrained decoding** (`CONSTRAIN_JSON`, default off; `--constrain-json` on the
   eval script): each Planner/Coder call's pydantic schema is sent to the backend (`json_schema`
   for llama-server, `format` for Ollama) so the response must fit it. A grammar built from the
   schema cannot see a Python validator, so rules that matter live in the schema itself:

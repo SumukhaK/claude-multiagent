@@ -164,11 +164,11 @@ note per phase as it lands.
 2. Run the test suite: `uv run pytest`
 3. Manually verify local model serving on your own hardware:
    `uv run python scripts/benchmark_llm.py`
-4. Pull the model and run the golden-set evaluation (heavy: keeps the CPU and GPU busy for a long
-   time, so not while you need the laptop):
+4. Pull the model (the agents' default, `OLLAMA_AGENT_MODEL`) and run the golden-set evaluation
+   (heavy: keeps the CPU and GPU busy for a long time, so not while you need the laptop):
    ```
    ollama pull qwen2.5:7b-instruct
-   uv run python scripts/run_eval.py --agent-model qwen2.5:7b-instruct
+   uv run python scripts/run_eval.py
    ```
 
 Further setup instructions land here as later phases add runnable pieces.

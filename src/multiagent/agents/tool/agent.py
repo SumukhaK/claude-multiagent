@@ -1,8 +1,8 @@
 """ToolAgent: the only agent with git/GitHub access, plus the best-effort hardware test runner.
 
-Composes GitTools (deterministic, allowlisted git/gh operations), an injected LLMClient (Ollama,
-per REQUIREMENTS.md §3 D4 — CPU-only, so it never contends with the GPU-resident llama-server
-used by the Planner/Coder) for the one place an LLM adds real value here — writing a commit
+Composes GitTools (deterministic, allowlisted git/gh operations), an injected LLMClient (the same
+Ollama client the Planner and Coder share, per TRACKER.md D8, so the model is not reloaded between
+agents) for the one place an LLM adds real value here — writing a commit
 message from a plain-text summary — and a HardwareTestRunner for best-effort device/emulator
 checks. Never edits code; that's the Coding agent's job.
 
