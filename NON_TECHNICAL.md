@@ -48,6 +48,19 @@ ships it to GitHub as a reviewed pull request — with a report card at the end 
 the whole system performed (how fast, how much it "thought", how often it succeeded on the first
 try, and how often it made something up and caught its own mistake).
 
+## Where things stand today
+
+Everything above is built and tested, and the pieces have been run together on real local models.
+The honest result of the first real test: **the system did not complete any of the small coding
+tasks it was given** (0 of 16). The workers' *process* held up: every failure was reported cleanly
+rather than hidden or faked, and every request for something harmful was refused. The problem is
+the small AI model, which usually answers in ordinary sentences when the system needs a strictly
+formatted reply, so the next worker never receives instructions it can read. Making the model
+answer in the required format is the next thing being tried, and the same test will show whether
+it helps. Two parts (detailed activity tracing and the "context budget" tracker) are built but not
+yet switched on, and there is no simple command-line front door yet; the project's technical notes
+list exactly what is and is not connected.
+
 ## Who this is for
 
 This is a portfolio project demonstrating practical AI engineering — not a commercial product,
