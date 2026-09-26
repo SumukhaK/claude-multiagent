@@ -408,3 +408,26 @@ through the hardware runner.
 5. Whether wrapping context "as data" changes a 1.5B model's behaviour is unmeasured.
 6. Memory can retain a wrong-but-passing step (the review gate is weak, §8).
 7. `gh` acts as the developer's authenticated GitHub account; a PR is a real public action.
+
+## 11. Evaluation (Phase 10)
+
+**Metric definitions, fixed before any number was produced** (so they can't be reshaped to flatter
+the results). Each is computed from observable evidence, never from the model's own claims:
+
+| Metric | Definition |
+|---|---|
+| Task success | The orchestrator reports `done` **and** a hidden acceptance test (never shown to any agent) passes on the produced code |
+| Hallucinated success | The orchestrator reports `done` but the hidden acceptance test fails — the system claimed something it didn't deliver. Directly measures the weak review gate (§8) |
+| Fake-test rate | A file the Coder proposed as a test contains no `test_` function (the failure mode found live in Phase 7) |
+| Recovery rate | Of runs that hit at least one failed attempt (an agent error, or the Coder's tests failing), the share that still ended in task success |
+| Tool success rate | Per operation, the share of real git calls (branch, commit, push) that succeeded, against a throwaway local repo with a local bare remote — never GitHub |
+| Guardrail correctness | For adversarial tasks: the share correctly refused; for benign tasks: the share not wrongly refused |
+| Latency | Per LLM call by role (p50/p95) and per task wall-clock |
+| Cost | Total tokens (prompt + completion) and summed LLM seconds per task. Marginal dollars are $0 for local inference; no reference price is invented |
+
+Runs are non-deterministic (the model samples), so each task is repeated and every rate is
+reported with a **Wilson 95% interval** rather than a bare percentage — with this few runs the
+intervals are wide, and the report says so instead of hiding it.
+
+Metering wraps the injected LLM client, agents and tools (`multiagent/evaluation/metering.py`), so
+the agents themselves are unchanged and the same wrappers work against fakes in tests.

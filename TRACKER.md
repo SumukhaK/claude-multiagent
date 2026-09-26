@@ -147,7 +147,7 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 | 7 | Orchestrator: LangGraph state machine wiring all three agents, human-in-the-loop clarification interrupt, retry/escalation policy, hard step-budget circuit breaker, end-to-end test | ✅ |
 | 8 | Memory layer: local mem0 (local embeddings via `nomic-embed-text`, local vector store), wired into Planner + Coder | ✅ |
 | 9 | Guardrails & security hardening pass: expand injection/secret-exfiltration filters, sandbox/tool-allowlist audit | ✅ |
-| 10 | Evaluation harness: golden task set, metrics (latency, token usage, tool success rate, hallucination rate + recovery, cost proxy), results appended to `README.md` | ⬜ |
+| 10 | Evaluation harness: golden task set, metrics (latency, token usage, tool success rate, hallucination rate + recovery, cost proxy), results appended to `README.md` | 🔶 |
 | 11 | Polish: finalize architecture diagram, changelog, demo | ⬜ |
 
 ## 4. Phase log
@@ -371,3 +371,10 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   network" is not true in practice for the Coder, whose pytest runs execute model-written code with
   the developer's full privileges. 26 new tests, 447 passing (+6 documented expected failures).
   **Phase 9 complete.**
+- 2026-09-26 — Phase 10 started. First component landed on `feat/eval-metrics`: Wilson
+  intervals and percentiles (`stats.py`) and the metering wrappers (`metering.py`) that observe LLM
+  calls, agent outcomes and tool operations by wrapping the injected objects — no agent code
+  changed, verified by running the real orchestrator unchanged through metered agents. Metric
+  definitions were fixed in REQUIREMENTS.md §11 *before* any number existed, each derived from
+  observable evidence (a hidden acceptance test), never from the model's own claims. 27 new tests,
+  465 passing. Next: the golden task set, then the runner and the real run.
