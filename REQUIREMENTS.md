@@ -434,10 +434,11 @@ the agents themselves are unchanged and the same wrappers work against fakes in 
 
 ### 11.1 The golden set (`multiagent/evaluation/golden_tasks.py`)
 
-Eleven tasks: five features, two bug fixes (the agents are shown the buggy code), one
-*deliberately underspecified* task that should provoke a clarifying question, two adversarial
-tasks that the input guardrail should refuse, and one benign security-flavoured feature ("password
-strength") that a naive keyword filter would wrongly refuse. Each implementation task pairs a
+Ten tasks: five features (one of them, "password strength", is benign but security-flavoured, so
+a naive keyword filter would wrongly refuse it), two bug fixes (the agents are shown the buggy
+code), one *deliberately underspecified* task that should provoke a clarifying question, and two
+adversarial tasks that the input guardrail should refuse. (An earlier revision of this document
+and PR #23 said "eleven" — the password-strength task had been counted twice.) Each implementation task pairs a
 plain-English goal naming its file and function with a **hidden acceptance test** that is written
 into the sandbox only after the run.
 
@@ -447,3 +448,43 @@ nothing is done** (an agent that does nothing can't score), is invisible to the 
 goal is consistent with the input guardrail. The tasks are simple on purpose — the evaluation
 measures the *system's* loop and honesty, not how hard a problem the model can solve — but that
 also means results say little about realistic software tasks.
+
+### 11.2 The harness
+
+`scripts/run_eval.py` starts llama-server (Planner/Coder) and uses Ollama (Tool agent), then runs
+every golden task `--repeats` times (interleaved) through the **real** agent classes, sandboxed
+filesystem and pytest runner, and **real git** against a throwaway repo with a *local bare remote*
+— never GitHub. Results stream to `evals/results/<timestamp>.jsonl` as each run finishes, so an
+interrupted run keeps what it has; the aggregate is rendered to `evals/results/<timestamp>.md`
+and published into a marked section of the README, replaced (not duplicated) on re-runs.
+
+Design choices worth knowing:
+- **The runner is model-agnostic.** `run_task` takes a factory building the orchestrator for a
+  sandbox and meter, so it is tested with fakes; the wiring of the real stack is smoke-tested with
+  fake LLM clients, including a scripted model that drives the real Planner, Coder, reviewer and
+  Tool agent (real files, real pytest, real commit and push to the local remote) to a genuine
+  success — so a failure in a real run is the model's, not the harness's.
+- **Pull-request creation is stubbed and labelled** (no GitHub remote to open one on), and
+  excluded from tool success so a stub can't inflate the rate.
+- **Memory is off** so tasks are independent of each other.
+- **A crash in one run is recorded as `crashed`** and never aborts the suite.
+- **Orchestrator budget for evaluation is 12 steps** (not the default 25), to bound a run that is
+  going nowhere; the model's per-response token cap is 1200.
+- **Not measured, on purpose:** marginal cost in dollars (local inference is $0 and no reference
+  price is invented) and any comparison against another model.
+
+### 11.3 First real run, and a bug the evaluation found
+
+20 runs (10 tasks x 2) against the real models: **0/16 implementation runs succeeded**, 4/4
+adversarial runs refused, 0/16 legitimate tasks wrongly refused. Failure causes: 14/16 the model
+returned no valid JSON (6 Planner, 8 Coder), 2/16 a step failed review or tests. Full table in the
+README; raw per-run data in `evals/results/`. The number is small-sample and the model is the
+bottleneck, not the loop.
+
+Two earlier attempts were **discarded, not published**: `LlamaServerProcess` started llama-server
+with an unread `stdout=PIPE`; after roughly 14 runs of request logging the pipe buffer filled, the
+server blocked on its next log write and every completion hung while `/health` still answered ok.
+Both attempts stalled at the same run, which is what exposed it. Fixed in PR #24 (output goes to
+`LLAMA_LOG_PATH`), verified with 300 real completions; the published run is the third attempt and
+its server log (93KB) is larger than the old buffer. Lesson: an evaluation harness is also a stress
+test of the code it drives, and `/health` ok does not mean the server is serving.

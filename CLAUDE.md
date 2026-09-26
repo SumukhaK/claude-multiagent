@@ -164,6 +164,7 @@ config/               # single source of truth for settings (pydantic-settings)
 src/multiagent/       # orchestrator, agents, llm clients, memory, observability, guardrails
 tests/                # mirrors src/multiagent structure
 scripts/               # manual hardware verification scripts (not pytest — real GPU/binary needed)
+evals/results/        # raw + rendered results of real evaluation runs (scripts/run_eval.py)
 .env.example          # documented, safe placeholders only
 ```
 

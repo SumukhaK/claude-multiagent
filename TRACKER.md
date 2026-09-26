@@ -147,7 +147,7 @@ Legend: ⬜ not started · 🔶 in progress · ✅ done · ⏸ deferred
 | 7 | Orchestrator: LangGraph state machine wiring all three agents, human-in-the-loop clarification interrupt, retry/escalation policy, hard step-budget circuit breaker, end-to-end test | ✅ |
 | 8 | Memory layer: local mem0 (local embeddings via `nomic-embed-text`, local vector store), wired into Planner + Coder | ✅ |
 | 9 | Guardrails & security hardening pass: expand injection/secret-exfiltration filters, sandbox/tool-allowlist audit | ✅ |
-| 10 | Evaluation harness: golden task set, metrics (latency, token usage, tool success rate, hallucination rate + recovery, cost proxy), results appended to `README.md` | 🔶 |
+| 10 | Evaluation harness: golden task set, metrics (latency, token usage, tool success rate, hallucination rate + recovery, cost proxy), results appended to `README.md` | ✅ |
 | 11 | Polish: finalize architecture diagram, changelog, demo | ⬜ |
 
 ## 4. Phase log
@@ -378,9 +378,19 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   definitions were fixed in REQUIREMENTS.md §11 *before* any number existed, each derived from
   observable evidence (a hidden acceptance test), never from the model's own claims. 27 new tests,
   465 passing. Next: the golden task set, then the runner and the real run.
-- 2026-09-26 — Second Phase 10 component landed on `feat/eval-golden-set`: eleven golden tasks
-  (features, bug fixes, one underspecified task, two adversarial, one benign-but-scary-sounding),
+- 2026-09-26 — Second Phase 10 component landed on `feat/eval-golden-set`: ten golden tasks
+  (five features incl. one benign-but-scary-sounding, two bug fixes, one underspecified task, two
+  adversarial; originally miscounted as eleven, corrected later),
   each with a hidden acceptance test. The set is itself tested with real pytest runs: every
   acceptance test passes on its reference solution and fails when nothing is done, is invisible to
   the agents, and is consistent with the input guardrail. 38 new tests, all passing first time;
   503 total. Next: the runner, the real run, and publishing results.
+- 2026-09-26 — Phase 10 complete on `feat/eval-runner`: runner, report and real-system wiring, then
+  the first real run through the real stack. **0/16 implementation runs succeeded** (14 the model
+  returned no valid JSON, 2 failed review/tests); 4/4 adversarial refused; 0 legitimate tasks
+  wrongly refused. Two earlier attempts were discarded after the evaluation exposed a real bug:
+  the llama-server wrapper's unread stdout pipe froze the server after ~14 runs (fixed separately in
+  PR #24, verified with 300 real completions). Results published at the bottom of the README with
+  an interpretation that does not oversell 0 hallucinated successes (there were 0 claimed
+  successes). 555 tests passing (+6 documented expected failures). Next: JSON-constrained decoding
+  (branch `feat/json-constrained-decoding`, code written, real-server check pending) and tracing.
