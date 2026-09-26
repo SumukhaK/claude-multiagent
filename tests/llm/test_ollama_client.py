@@ -55,6 +55,34 @@ def test_generate_parses_response_into_llm_response():
     assert result.latency_seconds >= 0
 
 
+def test_generate_omits_num_ctx_by_default():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["payload"] = json.loads(request.content)
+        return httpx.Response(200, json={"response": "", "prompt_eval_count": 0, "eval_count": 0})
+
+    client = OllamaClient(host="http://127.0.0.1:11434", model="qwen2.5:7b-instruct", use_gpu=False)
+    client.generate("hi", client=_client_with(handler))
+
+    assert "num_ctx" not in captured["payload"]["options"]
+
+
+def test_generate_sets_num_ctx_when_context_size_is_configured():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["payload"] = json.loads(request.content)
+        return httpx.Response(200, json={"response": "", "prompt_eval_count": 0, "eval_count": 0})
+
+    client = OllamaClient(
+        host="http://127.0.0.1:11434", model="qwen2.5:7b-instruct", use_gpu=False, context_size=4096
+    )
+    client.generate("hi", client=_client_with(handler))
+
+    assert captured["payload"]["options"]["num_ctx"] == 4096
+
+
 def test_generate_hits_the_api_generate_endpoint():
     captured = {}
 

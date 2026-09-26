@@ -124,7 +124,48 @@ not free-form dicts, so a malformed response fails validation loudly instead of 
 | Packaging | uv | Already installed |
 | Git/GitHub | git, `gh` CLI | Already authenticated |
 
-## 6. Explicit non-goals (for now)
+## 6. Context engineering (treat context as a budget)
+
+Added after Phase 2, before building the Planning agent — context needs to be managed *before*
+any agent has a real conversation loop, not retrofitted after. See TRACKER.md decision D7 for
+why this became its own phase rather than a Phase 3/4 footnote.
+
+**Why this is a hard requirement here, not a nice-to-have:** llama-server runs with an explicit
+`-np 2` (parallel slots). Because the slot count is explicit rather than `auto`, this build's
+`--kv-unified` defaults to *off* (confirmed via `llama-server --help`), so the configured
+`-c 8192` context is split evenly across the 2 slots — each of the Planner and Coder effectively
+gets **~4096 tokens**, not 8192. That's a small budget for a multi-step plan-execute-review loop
+with tool output in it, so compaction is load-bearing, not optional headroom.
+
+- **Every agent's conversation history is a `ContextManager`** (`multiagent/context/manager.py`),
+  tracked against a token budget derived from the real, measured hardware split:
+  `llama_agent_token_budget()` for Planner/Coder (ctx_size ÷ parallel slots, minus a response
+  reserve), `ollama_agent_token_budget()` for the Tool agent (its own configured
+  `ollama_tool_context_size`, minus a reserve). The Ollama client now sets `num_ctx` explicitly
+  from that same setting, so the tracked budget matches the model's *actual* runtime context
+  window instead of silently drifting from it.
+- **Tool-call history is pruned before anything else.** `evict_old_tool_output()` keeps only the
+  most recent N tool results verbatim and replaces older ones with a short placeholder — tool
+  output (file contents, test logs) is usually the largest and least reusable part of a
+  transcript, so it's the first thing dropped.
+- **Compaction/summarization is the fallback**, not the first move. `compact()` collapses
+  everything except the most recent turns into a single summary turn, produced by an injected
+  summarizer function — decoupled from any specific LLM backend, so the same `ContextManager` is
+  reusable across the llama.cpp-backed and Ollama-backed agents.
+- **`maybe_compact()` is this system's `/compact`.** There's no interactive REPL here to type a
+  slash command into, so the equivalent is procedural: the orchestrator calls `maybe_compact()`
+  after every agent turn, which evicts stale tool output first and only pays for a summarization
+  pass if eviction alone didn't bring the transcript back under budget.
+- **Two thresholds, not one:** `warning_ratio` (default 0.75) is a soft signal an agent/orchestrator
+  can log or react to proactively; `hard_ratio` (default 0.9) is where compaction actually
+  triggers — leaving headroom before the model's real context limit, not right up against it.
+- **Token counts are an approximation** (`estimate_tokens`, ~4 characters per token), not an exact
+  count from the model's own tokenizer. An exact count would mean a round trip to llama-server's
+  `/tokenize` endpoint on every turn just for budget bookkeeping, which isn't worth the extra
+  hardware/latency cost — `token_counter` is an injectable dependency, so a more precise counter
+  can be swapped in later without changing `ContextManager` itself.
+
+## 7. Explicit non-goals (for now)
 
 - Fine-tuning or training any model.
 - Running more than one heavy local model on the GPU simultaneously.
