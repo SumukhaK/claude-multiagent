@@ -96,3 +96,18 @@ def test_filesystem_tool_has_no_write_or_delete_methods(project):
 
     assert not hasattr(fs, "write_file")
     assert not hasattr(fs, "delete_file")
+
+
+def test_resolve_within_sandbox_returns_the_absolute_path_without_requiring_it_to_exist(project):
+    fs = ReadOnlyFilesystem(project)
+
+    resolved = fs.resolve_within_sandbox("src/new_file_that_does_not_exist_yet.py")
+
+    assert resolved == (project / "src" / "new_file_that_does_not_exist_yet.py").resolve()
+
+
+def test_resolve_within_sandbox_blocks_traversal_without_touching_the_filesystem(project):
+    fs = ReadOnlyFilesystem(project / "src")
+
+    with pytest.raises(SandboxViolationError):
+        fs.resolve_within_sandbox("../README.md")

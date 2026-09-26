@@ -24,6 +24,13 @@ class ReadOnlyFilesystem:
             raise SandboxViolationError(f"{relative_path!r} escapes the sandbox root")
         return candidate
 
+    def resolve_within_sandbox(self, relative_path: str) -> Path:
+        """Validate (and return) the absolute path for `relative_path`, without touching the
+        filesystem or requiring it to exist. Lets a caller (e.g. the Coding agent, validating a
+        whole batch of proposed file changes before writing any of them) check a path is safe
+        up front rather than discovering a violation partway through."""
+        return self._resolve(relative_path)
+
     def read_file(self, relative_path: str, max_bytes: int = 200_000) -> str:
         """Read a file's contents, truncated to `max_bytes` (a safety net, not a token budget —
         callers that care about the model's context budget should size/summarize further)."""
