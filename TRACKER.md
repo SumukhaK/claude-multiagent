@@ -214,4 +214,7 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   surfaced a real, honest limitation — this 1.5B model's reasoning is verbose and sometimes never
   reaches a valid answer even at 1200 `max_tokens` — recorded in REQUIREMENTS.md §8 rather than
   hidden, with the parser now failing loudly and correctly on that rather than silently
-  mis-parsing. 26 new tests, 101 tests passing overall. **Phase 4 complete.**
+  mis-parsing. Also fixed a real design gap caught in self-review: an empty plan with no steps
+  and no clarifying questions was reported as "ok" — a degenerate response the orchestrator
+  would have silently treated as a completed empty plan — now reported as an error instead.
+  27 new tests, 102 tests passing overall. **Phase 4 complete.**
