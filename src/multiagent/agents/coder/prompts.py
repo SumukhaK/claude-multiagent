@@ -69,8 +69,9 @@ def render_coder_prompt(
 ) -> str:
     """Build the full prompt for one Coder turn. `constrained` says the response will be decoded
     against the proposal's JSON schema, which selects the words-only format description. `goal` is
-    the overall task: a step often drops details it carries, such as a file name. `feedback` is the
-    reviewer's reason for rejecting the previous attempt, so a retry is informed, not a re-roll."""
+    the overall task: a step often drops details it carries, such as a file name. `feedback` is why the previous
+    attempt at this step didn't work -- a reviewer's rejection, the Coder's own tests failing, or
+    the last response being unusable -- so a retry is informed, not a blind re-roll."""
     edge_cases_section = (
         f"\nKnown edge cases to handle: {', '.join(step.edge_cases)}" if step.edge_cases else ""
     )
@@ -80,7 +81,7 @@ def render_coder_prompt(
         f"Overall task (if it names a file, use that file name): {goal}\n\n" if goal else ""
     )
     feedback_section = (
-        f"\n\nA reviewer rejected your previous attempt at this step. Fix what it names:\n"
+        f"\n\nYour previous attempt at this step did not work. Fix this specific problem:\n"
         f"{feedback[:_MAX_FEEDBACK_CHARS]}"
         if feedback
         else ""

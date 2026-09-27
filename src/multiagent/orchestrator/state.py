@@ -26,7 +26,9 @@ class OrchestratorState(TypedDict):
     step_reports: list[CodeChangeReport]
     step_retry_count: int
     last_step_approved: bool | None
-    review_feedback: str | None
+    # why the previous attempt at the current step didn't work -- a review rejection, the Coder's
+    # own tests failing, or its last response being unusable -- handed to the Coder's next attempt
+    retry_feedback: str | None
 
     step_count: int
     status: str
@@ -52,7 +54,7 @@ def build_initial_state(task_id: str, goal: str, branch_name: str, code_context:
         step_reports=[],
         step_retry_count=0,
         last_step_approved=None,
-        review_feedback=None,
+        retry_feedback=None,
         step_count=0,
         status="running",
         error=None,

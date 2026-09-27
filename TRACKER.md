@@ -436,3 +436,17 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   budget exceeded (item 2), 1 false success (reviewer approved step-scoped-correct code that missed
   a requirement outside its step — an expected limit, not a defect). Detail in failed_experiment.md
   §9. The Coder's own tests are now the largest remaining problem; starting there next.
+- 2026-09-27 — Started on the Coder's own tests problem (`feat/coder-retry-feedback`), the new
+  largest cause of failure (failed_experiment.md §9: 4 escalations outright, 2 more masked a
+  success that had already passed the hidden test). Root cause found by reading the orchestrator:
+  a step retried BLIND in two cases -- a malformed-JSON coder error (`coder_error`, the single
+  largest cause overall) and the Coder's own tests failing (which never reaches the reviewer, since
+  only a passing `tests_passed` triggers a review call) -- neither ever told the Coder what was
+  wrong before its next attempt. Fix: `CodeChangeReport.test_output` (capped, same pattern as
+  `file_contents`) carries the pytest output; the orchestrator's per-step `retry_feedback` (renamed
+  from `review_feedback`, now built from three sources: a review rejection, the Coder's own test
+  failure, or an unusable last response) reaches the Coder's next prompt in all three cases, not
+  just review rejections. Tests first (8 red, then green); 633 passed, 6 documented xfails.
+  Real-server smoke check (3 tasks, no golden comparison) confirmed no crashes and real behaviour
+  end to end. Not yet measured with a full golden run -- that's the natural next step before
+  claiming an improvement.

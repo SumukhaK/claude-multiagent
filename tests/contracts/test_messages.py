@@ -157,3 +157,16 @@ def test_a_code_change_report_can_carry_the_file_contents_and_defaults_to_none()
 
     assert bare.file_contents == {}
     assert full.file_contents == {"a.py": "x = 1\n"}
+
+
+def test_a_code_change_report_can_carry_its_own_test_output_and_defaults_to_empty():
+    from multiagent.contracts.messages import CodeChangeReport
+
+    bare = CodeChangeReport(step_id=1, files_changed=["a.py"], tests_added=[], tests_passed=True, summary="s")
+    full = CodeChangeReport(
+        step_id=1, files_changed=["a.py"], tests_added=[], tests_passed=False, summary="s",
+        test_output="1 failed, 0 passed",
+    )
+
+    assert bare.test_output == ""
+    assert full.test_output == "1 failed, 0 passed"

@@ -255,7 +255,7 @@ def test_a_rejection_sends_its_feedback_to_the_coder_on_the_retry():
     result = orchestrator.run(task_id="r2", goal="g", branch_name="feat/x")
 
     assert result["status"] == "done"
-    assert coder.feedbacks == ["", "Handle b == 0."]
+    assert coder.feedbacks == ["", "A reviewer rejected this: Handle b == 0."]
 
 
 def test_feedback_is_cleared_once_a_step_is_approved_so_the_next_step_starts_clean():
@@ -268,4 +268,36 @@ def test_feedback_is_cleared_once_a_step_is_approved_so_the_next_step_starts_cle
 
     orchestrator.run(task_id="r3", goal="g", branch_name="feat/x")
 
-    assert coder.feedbacks == ["", "Fix it.", ""]
+    assert coder.feedbacks == ["", "A reviewer rejected this: Fix it.", ""]
+
+
+def test_a_coder_parsing_error_sends_the_error_text_to_the_retry_instead_of_a_blind_retry():
+    """Before, a malformed-JSON response (the dominant real failure mode) retried with no
+    information about what was wrong with the last one."""
+    _, coder, orchestrator = _review_loop(
+        [review(1, approved=True)],
+        [coder_error("no complete JSON object found in model response"), coder_ok(1, tests_passed=True)],
+    )
+
+    result = orchestrator.run(task_id="r4", goal="g", branch_name="feat/x")
+
+    assert result["status"] == "done"
+    assert coder.feedbacks == ["", "Your last reply could not be used: no complete JSON object found in model response"]
+
+
+def test_the_coders_own_failing_tests_are_fed_back_without_a_review_call():
+    """A step whose own tests fail is rejected before the reviewer is ever asked (only a passing
+    tests_passed triggers review), so it used to retry blind. Now it gets told why."""
+    planner, coder, orchestrator = _review_loop(
+        [review(1, approved=True)],
+        [
+            coder_ok(1, tests_passed=False, test_output="AssertionError: assert 3 == 4"),
+            coder_ok(1, tests_passed=True),
+        ],
+    )
+
+    result = orchestrator.run(task_id="r5", goal="g", branch_name="feat/x")
+
+    assert result["status"] == "done"
+    assert planner.review_calls == [1]  # never asked to review the failing attempt
+    assert coder.feedbacks == ["", "Your own tests failed:\nAssertionError: assert 3 == 4"]

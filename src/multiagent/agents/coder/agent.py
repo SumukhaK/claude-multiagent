@@ -57,6 +57,7 @@ class CoderAgent:
         max_tokens: int = 1536,
         constrain_json: bool = False,
         max_report_file_chars: int = 3000,
+        max_report_output_chars: int = 1500,
     ):
         if max_tokens <= 0:
             raise ValueError("max_tokens must be positive")
@@ -67,6 +68,7 @@ class CoderAgent:
         self._max_tokens = max_tokens
         self._constrain_json = constrain_json
         self._max_report_file_chars = max_report_file_chars
+        self._max_report_output_chars = max_report_output_chars
 
     def implement_step(
         self, step: PlanStep, code_context: str = "", goal: str = "", feedback: str = ""
@@ -118,16 +120,20 @@ class CoderAgent:
             tests_passed=test_result.passed,
             summary=proposal.summary,
             file_contents={
-                file_change.path: self._capped(file_change.content) for file_change in all_files
+                file_change.path: self._capped(file_change.content, self._max_report_file_chars)
+                for file_change in all_files
             },
+            test_output=self._capped(test_result.output, self._max_report_output_chars),
         )
         return AgentMessage(agent=AgentName.CODER, task_id=self._task_id, status=MessageStatus.OK, payload=report)
 
-    def _capped(self, content: str) -> str:
-        """The reviewer's copy of a file: bounded, so one huge file can't crowd out the prompt."""
-        if len(content) <= self._max_report_file_chars:
+    @staticmethod
+    def _capped(content: str, limit: int) -> str:
+        """Bounded copy of some evidence (a file, test output): so one huge one can't crowd out
+        the next prompt it's fed back into."""
+        if len(content) <= limit:
             return content
-        return content[: self._max_report_file_chars] + " ...[truncated]"
+        return content[:limit] + " ...[truncated]"
 
     def _error(self, message: str) -> AgentMessage:
         return AgentMessage(
