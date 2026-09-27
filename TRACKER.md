@@ -481,3 +481,14 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   12-step budget. Next: plan granularity -- the Planner sometimes produces steps that aren't
   independently actionable (e.g. "Understand the current structure...", section 10) or more steps
   than a simple task needs, and every step's retries draw on the same fixed budget.
+- 2026-09-27 — Plan granularity, first lever (`feat/planner-granularity-rule`). Section 11 (and the
+  step-budget-exhaustion runs) pointed at the Planner producing too many steps, or non-actionable
+  ones ("Understand the current structure..."). Unlike the earlier (rejected) full reword on the
+  1.5B model, this is a single additive rule on the unchanged, otherwise-working prompt, measured
+  before being written: on the real qwen2.5:7b model, 24 samples per variant on non-golden goals --
+  mean steps 2.96 -> 1.0, single-step plans 25% -> 100%, non-actionable steps 5 -> 0, parse rate
+  unaffected (100% both). Checked separately against two genuinely compound goals (independent
+  functions in one task) to confirm it doesn't just cap every plan at one step: 3 of 6 samples still
+  split into independent steps. Tests first (2 red, then green); 639 passed, 6 documented xfails.
+  Verified again against the exact merged wording (not just the ablation's patch): 9 of 9 samples,
+  1 actionable step each. Not yet measured with a full golden run.
