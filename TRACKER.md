@@ -570,3 +570,30 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   gap). README's "what would most improve this next" paragraph updated with these concrete
   findings. Next: the self-imposed-edge-case bucket -- likely needs scoping the Coder's own tests
   to what the plan step actually asked for, not another static check.
+- 2026-09-27 — Started on the self-imposed-edge-case bucket (`feat/planner-edge-case-quality`).
+  Correction to the previous entry's framing: checked the actual plan steps behind
+  `feature_add-1` and `bugfix_average-0` before assuming the Coder was inventing anything --
+  it wasn't. The Planner's own `edge_cases` list demanded the extra behavior (e.g. "a and b are
+  both very large numbers that might cause overflow" for a plain `add`), so the Coder was
+  faithfully testing exactly what it was told. Also found the mechanism behind a self-contradictory
+  test seen earlier (`feature_safe_divide-0`, §13): the Planner's own edge case said a non-numeric
+  input "may raise a TypeError" -- hedged wording that let the Coder write both a `None`-return
+  assertion and a raises-TypeError assertion for similar invalid inputs. Also found live, in
+  `feature_palindrome-1`: a redundant second step ("Add a test case for each of the edge cases in
+  the function") that isn't actionable and isn't needed under TDD, which slipped past the existing
+  review/understand/explore rule because it isn't worded like one of those.
+
+  Three candidate fixes, each measured against the real model before being kept or dropped:
+  telling the model to state edge-case behavior definitely, never hedged, worked (0 of 18 hedged,
+  vs. a real hedge seen live before); blocking the redundant test-only step worked (0 of 8 on the
+  exact goal that had produced it); telling the model not to invent edge cases beyond what the
+  goal's wording implies did **not** work -- 0 of 18 samples showed any reduction, a trivial
+  `add(a, b)` still got up to 10 invented edge cases (dicts, strings-as-numbers) with the
+  instruction in the prompt. Dropped rather than shipped unproven, the same lesson the rejected
+  1.5B full-prompt reword taught: this looks like a deep default habit, not something prose can
+  suppress. Tests first for the two that worked; full suite: 648 passed, 6 documented xfails.
+  Real-server smoke check (4 runs, the exact goals that had shown hedging/redundant steps live):
+  no crashes, no hedged wording, no redundant step, single-step plans throughout -- the two
+  escalations that did happen were a different, already-known cause (implementation-vs-self-test
+  logic mismatches), not a reappearance of what this fix targets. Not yet measured with a full
+  golden run.
