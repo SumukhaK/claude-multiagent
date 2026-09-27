@@ -515,3 +515,17 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   run measured so far, including this one; this run it happened to guess a self-consistent wrong
   answer instead of one its own tests caught. Next: get the Planner to actually ask a clarifying
   question on an underspecified task instead of silently guessing.
+- 2026-09-27 — Started on the clarifying-questions gap (`feat/planner-clarifying-questions`).
+  Baseline measured first: 0 of 15 asks on genuinely ambiguous goals with the unchanged prompt,
+  0 of 15 on clear-cut ones -- the prompt already said "ask instead of guessing", prose alone
+  wasn't enough, the same lesson as plan granularity. Concrete ambiguity criteria plus a second
+  worked JSON example of the "ask" shape raised that to 6 of 18 (0 of 18 false positives) --
+  caught and fixed an f-string bug in the first ablation script that had actually measured
+  different, malformed prompt text before trusting that number. Most of the 6 were a hedge (real
+  questions, guessed step still attached), so `PlannerAgent.create_plan` now checks
+  `clarifying_questions` before `steps`, so a hedge isn't silently discarded in favour of the
+  guess. Tests first (3 red, then green); 642 passed, 6 documented xfails. Real-server smoke
+  check confirmed no crashes; also confirmed the rate varies a lot by wording -- the eval
+  harness's own golden task asked 0 of 6 in this measurement, so a full golden run may not move
+  that one task's outcome even though the underlying fix is real. Not yet measured with a full
+  golden run.
