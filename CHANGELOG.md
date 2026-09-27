@@ -93,3 +93,11 @@ every remaining failure individually confirmed the reviewer was not the cause of
 Coder's own self-written tests now are, both by failing outright and by hiding two more successes
 that had already landed on disk. *Learned:* fixing the measured bottleneck can reveal the next one
 cleanly, if every failure is still checked rather than assumed to be the old cause.
+
+## Measuring the retry-feedback fix
+Still 4 of 16 successes, but malformed JSON dropped from 6 to 2 of 12 non-successes while the
+Coder's own tests failing every retry rose from 4 to 10 and became the dominant cause, with zero
+review rejections anywhere in the run. *Learned:* a fix can work exactly as built (the model is
+now told precisely what's wrong, confirmed by inspecting a captured SyntaxError traceback) and
+still not move the score, because sometimes the model cannot act on correct information within its
+retry budget. That's a different, harder problem than the one that was fixed.

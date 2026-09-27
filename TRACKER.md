@@ -450,3 +450,15 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   Real-server smoke check (3 tasks, no golden comparison) confirmed no crashes and real behaviour
   end to end. Not yet measured with a full golden run -- that's the natural next step before
   claiming an improvement.
+- 2026-09-27 — Full golden run measuring the coder-retry-feedback fix (#45,
+  `evals/results/20260927T065105Z`; failed_experiment.md §10). **Still 4/16 successes.** Malformed
+  JSON dropped from 6 to 2 of 12 non-successes (that part of the fix worked); the Coder's own
+  tests failing every retry rose from 4 to 10 and is now the dominant cause, with zero review
+  rejections in the whole run. Confirmed the feedback mechanism delivers real information (a real
+  pytest SyntaxError traceback was captured and fed back in `feature_add-1`) but the model often
+  cannot act on it within budget -- a code-generation limit, not a wiring gap. Also found a second,
+  distinct cause: `clarification_format_name-0`'s first plan step ("Understand the current
+  structure...") was not an actionable coding step, forcing a nonsensical test -- a concrete
+  instance of the known plan-granularity problem (item 2). Next: a cheap, targeted fix -- check
+  each proposed Python file with `ast.parse()` before running pytest, so a syntax error is reported
+  back precisely and instantly instead of costing a full pytest cycle to discover.
