@@ -187,3 +187,49 @@ note per phase as it lands.
    ```
 
 Further setup instructions land here as later phases add runnable pieces.
+
+## Evaluation: what we learned
+
+We evaluate this system the way we'd evaluate a hire's work, not by reading its code: a small
+golden set of ten tasks (simple features, bug fixes, a deliberately ambiguous task, and
+adversarial requests) with hidden acceptance tests, run against the real stack end to end — real
+agents, real pytest, real git — never mocked. The first local model we tried, 1.5B parameters on
+`llama-server`, failed it completely: 0 of 16 implementation runs succeeded. The causes were read
+from the raw evidence of every failed run, not guessed: it often couldn't produce valid JSON for
+the inter-agent contract at all, guessed at ambiguous requirements instead of asking, and when
+constrained to force valid JSON syntax, the *content* behind that now-valid JSON degraded into
+nonsense file paths and empty files. The full record, including a plain-English explanation of
+each failure, is in [failed_experiment.md](failed_experiment.md).
+
+Moving to Ollama `qwen2.5:7b-instruct` (still fully local, no paid APIs) didn't fix things by
+itself — the same golden set scored 0 of 16 on the bigger model too, for different,
+orchestration-level reasons: a review gate that rejected correct code about as often as buggy
+code (it couldn't see the actual code or test output, only a boolean); retries that never told
+the Coding agent *why* its last attempt failed; full pytest cycles spent rediscovering a syntax
+error a parser could catch instantly; and a Planning agent that defaulted to multi-step plans for
+one-function tasks, burning a fixed retry budget before a fix could land. Each fix was measured
+against the real model before being written and again after being shipped, not assumed to work:
+review gate → retry feedback → a syntax pre-check → a plan-granularity rule → JSON-schema-
+constrained decoding (verified this time not to repeat the 1.5B model's content-quality
+trade-off). Together they took the system from 0 of 16 to a best-observed 11 of 16 (69%) — though
+run-to-run variance is real and substantial on a sample this small and non-deterministic: repeated
+runs on the *identical* configuration have scored anywhere from 4 to 11 of 16, almost entirely
+driven by how often the Coding agent's own self-written tests happen to be internally consistent
+on a given sampling run, which is now the largest single remaining source of failure. We also
+found, and partially fixed, a Planning agent that never once asked a clarifying question on the
+one deliberately ambiguous golden task across every run measured — a real but partial fix landed
+(0% to 33% ask rate on ambiguous goals measured in isolation, no false positives), but it's
+wording-sensitive enough that it hasn't yet moved that specific task's own outcome.
+
+What would most improve this next: the Coding agent's own test-writing reliability — writing
+tests that contradict each other, or that impose stricter requirements than the actual spec, and
+then failing its own bar even when the real implementation is correct — is now the dominant
+remaining failure mode, and it kept recurring at about the same rate through three separate
+orchestration fixes that each worked exactly as designed, so it likely needs a fix targeted at
+that specific problem rather than another orchestration change. A dedicated code model (e.g.
+`qwen2.5-coder`) instead of a general-instruct one is untested here and could plausibly help
+specifically that bottleneck. Closing the JSON-constrained decoding path's residual ~3% failure
+rate and generalizing the clarifying-question criteria beyond the specific wordings tested so far
+are smaller, lower-risk next steps. Every golden run's raw results are kept in `evals/results/`,
+and the full quantitative history — including the changes that made things *worse* and were
+rejected, not just the ones that worked — is in [failed_experiment.md](failed_experiment.md).
