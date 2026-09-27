@@ -144,3 +144,16 @@ def test_payload_kind_must_match_a_known_discriminator():
         AgentMessage.model_validate(
             {"agent": "planner", "task_id": "task-1", "status": "ok", "payload": {"kind": "not_a_real_kind"}}
         )
+
+
+def test_a_code_change_report_can_carry_the_file_contents_and_defaults_to_none():
+    from multiagent.contracts.messages import CodeChangeReport
+
+    bare = CodeChangeReport(step_id=1, files_changed=["a.py"], tests_added=[], tests_passed=True, summary="s")
+    full = CodeChangeReport(
+        step_id=1, files_changed=["a.py"], tests_added=[], tests_passed=True, summary="s",
+        file_contents={"a.py": "x = 1\n"},
+    )
+
+    assert bare.file_contents == {}
+    assert full.file_contents == {"a.py": "x = 1\n"}

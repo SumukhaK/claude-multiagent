@@ -101,12 +101,12 @@ class PlannerAgent:
         return AgentMessage(agent=AgentName.PLANNER, task_id=self._task_id, status=status, payload=plan)
 
     def review_step(
-        self, step: PlanStep, report: CodeChangeReport, code_context: str = ""
+        self, step: PlanStep, report: CodeChangeReport, code_context: str = "", goal: str = ""
     ) -> AgentMessage:
         """Review one completed step. Both an approval and a rejection are status "ok" — a
         rejection is useful information for the orchestrator's retry policy, not a system error,
         the same way the Coder's own tests_passed=False isn't one either."""
-        prompt = render_review_prompt(step=step, report=report, code_context=code_context)
+        prompt = render_review_prompt(step=step, report=report, code_context=code_context, goal=goal)
 
         try:
             response = self._generate(prompt, StepReview)

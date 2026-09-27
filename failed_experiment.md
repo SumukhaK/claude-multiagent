@@ -246,7 +246,7 @@ had earlier attempts that parsed fine. The reviews that rejected correct work
 include a one-step plan whose step matched the task exactly, and plans cut into steps that cannot
 be completed alone (for example "check if calc.py exists").
 
-**Problems in the system, not the model (none fixed yet):**
+**Problems in the system, not the model (item 1 has since been addressed, see the follow-up):**
 1. The review gate rejects correct work, including work that matches a one-step plan.
 2. Plans are split into steps that cannot each be tested and completed on their own, and the
    reviewer judges the whole task against one narrow step.
@@ -260,6 +260,15 @@ be completed alone (for example "check if calc.py exists").
 in 11 of 16 tasks. But the system's own "reviewer" kept rejecting good answers, and a few answers
 were thrown away over formatting mistakes in the AI's reply, so the score the system reports is
 still zero. The problem has moved from the AI to our own review process, which is fixable.
+
+**Follow-up: the review gate (item 1).** The reviewer now sees the code and the overall goal, and
+its feedback reaches the Coder's retry. Replaying the saved Coder attempts whose tests passed
+through the old and new reviewer on the 7B model (ground truth: the hidden test on each attempt's
+exact files): approval of correct code rose from 6 of 26 votes to 26 of 26. On 9 mutants of correct
+code that pass the Coder's own tests but fail the hidden test, the new reviewer approved 6 of 27
+votes against 5 of 27 for the old one. The old reviewer approved correct and buggy code at about
+the same rate (23% against 19%), so its rejections carried no signal; the new one separates them
+(100% against 22%) but lets some subtle bugs through. Not yet measured on a full evaluation run.
 
 Caveats: 16 implementation runs, one pass each and non-deterministic, so read the counts as a
 pattern, not precise rates. "Every review verdict was a rejection" is read from the saved review

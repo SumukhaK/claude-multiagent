@@ -175,10 +175,15 @@ is in [failed_experiment.md](failed_experiment.md).
   Coder's schema requires at least one test file but not that it contains a test function, so a
   proposal can be well-formed and still verify nothing; the evaluation's "fake test" metric exists
   to measure exactly this.
-- **A reviewer's approval is a signal, not proof.** With the first small model, a plainly stated
-  mismatch between a step and the Coder's summary was still approved. The orchestrator therefore
-  treats `tests_passed` as the primary, objective gate and acts on a review *rejection*, but does
-  not treat an approval as evidence of correctness.
+- **A reviewer's verdict is a signal, not proof.** The orchestrator treats `tests_passed` as the
+  primary, objective gate and acts on a review *rejection*, but does not treat an approval as
+  evidence of correctness. The reviewer is given the code itself (the Coder's report carries the
+  size-capped contents of the files it wrote, wrapped as data), the overall goal, and a rubric that
+  approves unless a concrete defect can be named; a rejection's feedback is passed to the Coder's
+  next attempt instead of being discarded. Measured on saved runs (TRACKER.md, 2026-09-27): a
+  reviewer without the code approved only 6 of 26 votes on correct attempts, and with it approves
+  all 26; it still misses some subtle bugs (it approved 6 of 27 votes on mutated code that passes
+  the Coder's own tests), so an approval remains weak evidence.
 - **A returned error is a failure.** Agents report failure by returning `status="error"` rather
   than raising, and a failing test run is reported as data, not as a system error; the
   orchestrator's retry and escalation policy is built on those two facts.

@@ -79,3 +79,10 @@ the eval and benchmark scripts (`llama-server` stays as an optional backend); th
 showed the hidden test passing in 11 of 16 implementation runs (0 of 16 before) while the system
 still reported no successes, because its review gate, plan granularity and JSON parsing discard
 correct work (failed_experiment.md section 8).
+
+## The review gate
+The reviewer now sees the code and the overall goal, approves unless it can name a concrete defect,
+and its feedback reaches the Coder's retry. *Learned:* a reviewer that cannot see the evidence
+rejects by deferring, and the old one rejected correct and buggy code at nearly the same rate, so
+its rejections carried no information; measure a gate on both correct and wrong cases, not just on
+how often it says no.
