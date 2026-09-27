@@ -471,3 +471,13 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   different collection failure (an `ImportError`, not a `SyntaxError`) this fix correctly leaves
   alone -- confirming the fix's scope is as narrow as intended. Not yet measured with a full
   golden run.
+- 2026-09-27 — Full golden run measuring the syntax pre-check (#47, `evals/results/20260927T080834Z`;
+  failed_experiment.md §11). **Still 4/16** -- the third run in a row at exactly this count across
+  three different, individually-verified fixes. The pre-check fired 3 times live, confirmed
+  working as built. "Own tests fail" roughly halved (10 to 4); malformed JSON rose (2 to 5,
+  plausibly noise); the first genuine review rejection since the gate fix appeared (a real
+  edge-case bug, correctly caught); a new cause appeared -- step-budget exhaustion on 2 runs that
+  had the hidden test passing and multiple genuine approvals but ran out of the eval harness's
+  12-step budget. Next: plan granularity -- the Planner sometimes produces steps that aren't
+  independently actionable (e.g. "Understand the current structure...", section 10) or more steps
+  than a simple task needs, and every step's retries draw on the same fixed budget.

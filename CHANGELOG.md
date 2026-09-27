@@ -101,3 +101,10 @@ review rejections anywhere in the run. *Learned:* a fix can work exactly as buil
 now told precisely what's wrong, confirmed by inspecting a captured SyntaxError traceback) and
 still not move the score, because sometimes the model cannot act on correct information within its
 retry budget. That's a different, harder problem than the one that was fixed.
+
+## Three fixes, one plateau
+The syntax pre-check fired live and worked as built, and the score stayed at 4 of 16 for the third
+run running. *Learned:* a flat result across three different, individually-verified fixes is
+itself a finding -- it means the remaining problems are no longer "the orchestrator doesn't tell
+the model what's wrong," and are now the model's own reliability and the Planner's step count
+colliding with a fixed retry budget.
