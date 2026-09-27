@@ -86,10 +86,15 @@ class PlannerAgent:
                 error=str(exc),
             )
 
-        if plan.steps:
-            status = MessageStatus.OK
-        elif plan.clarifying_questions:
+        # clarifying_questions is checked first: measured live (TRACKER.md, 2026-09-27), the model
+        # often hedges under the ambiguity-criteria prompt -- real questions with a guessed step
+        # still attached, rather than "steps" left cleanly empty. If "steps" won that race, the
+        # guess would be acted on silently and the model's own flagged uncertainty discarded; the
+        # question is the stronger signal, so it wins regardless of what else is in the response.
+        if plan.clarifying_questions:
             status = MessageStatus.NEEDS_CLARIFICATION
+        elif plan.steps:
+            status = MessageStatus.OK
         else:
             return AgentMessage(
                 agent=AgentName.PLANNER,
