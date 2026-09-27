@@ -392,6 +392,117 @@ sometimes drawing up more steps than the system allows it to safely retry throug
 Caveats: 20 runs, one pass, non-deterministic; three runs at exactly 4/16 is a pattern worth taking
 seriously, not proof that the rate is precisely 25%.
 
+## 12. Plan granularity is the first fix to move the score
+
+Section 11 pointed at two different things: the model's own code-generation reliability, and the
+Planner producing more steps (or less actionable ones) than the fixed step budget can afford. The
+second is fixable without touching the model. An additive instruction was added to the unchanged
+Planner prompt: use exactly one step for a simple task, and never propose a "review", "understand",
+or "explore" step. This is deliberately narrower than the full-prompt reword tried on the 1.5B model
+and rejected (Appendix F) -- that reword made plans worse by removing the one thing (a worked
+example of a one-step plan) that was keeping steps short.
+
+Measured before being written, on the real qwen2.5:7b model, 24 samples per variant on non-golden
+goals: mean steps per plan 2.96 -> 1.0, single-step plans 25% -> 100%, non-actionable steps 5 -> 0,
+parse rate unaffected (100% both). Checked separately against two genuinely compound goals
+(independent functions in one task) to confirm the rule doesn't just cap every plan at one step
+regardless of complexity: 3 of 6 samples still split into independent steps.
+
+A full golden run (`evals/results/20260927T094919Z`) then measured it against the real system:
+
+| Cause (of non-successes) | After syntax pre-check (4/16) | After the granularity rule (7/16) |
+|---|---|---|
+| Total non-successes | 12 | 9 |
+| False success | 0 | 0 |
+| Malformed/wrong-shape JSON | 5 | 3 |
+| Own tests fail every retry | 4 | 6 |
+| Genuine review rejection | 1 | 0 |
+| Step budget exhausted | 2 | 0 |
+
+**7 of 16 -- the first score movement across four fixes.** Every one of the 9 non-success runs had
+a plan with exactly 1 step (checked directly against the raw artifacts, not inferred), confirming
+the rule is working mechanically in production exactly as the ablation predicted. Step-budget
+exhaustion, the new failure mode from section 11, dropped back to zero -- a 1-step plan cannot run
+out of a 12-step budget the way a multi-step one can. What's left split cleanly into the same two
+buckets as before: malformed JSON (3) and the Coder's own tests failing every retry with zero review
+calls reached (6, no genuine review rejections this run).
+
+*In plain English:* the first three fixes repaired how the system reacts to a failure, but did that
+inside plans that averaged three steps, so there were more places to go wrong and a fixed retry
+budget ran out faster. Shrinking the plan to the one step the task actually needs didn't change any
+of that retry machinery -- it just gave it a smaller, more winnable problem to work on, and the
+score moved for the first time as a result.
+
+Caveats: 16 runs, one pass, non-deterministic; a jump from 4/16 to 7/16 after being flat across
+three prior runs is a real signal on this sample, not a precise rate.
+
+## 13. JSON-schema-constrained decoding closes the JSON-shape failures, and surfaces a false success
+
+The remaining "malformed/wrong-shape JSON" failures were read directly from the raw model output
+(not inferred): the model was writing multi-line code into a JSON string as literal, unescaped
+newlines, and in two cases also dropped a closing bracket after a long code string. The project
+already had a lever for exactly this -- `CONSTRAIN_JSON` compiles each schema into a grammar and
+has Ollama's `format` field mask the token sampler so it can only produce schema-valid JSON -- but
+it had never been measured on this model, and REQUIREMENTS.md section 11.3 flagged the Ollama
+`format` path as unit-tested against a mock only. It was also the exact lever that, on the 1.5B
+model (section 11 of the Appendix), fixed every JSON-shape failure while making the aggregate result
+worse, because the content behind the now-valid JSON degraded into bad file paths and empty writes.
+
+Before trusting a full golden run, both questions were checked against the real qwen2.5:7b server:
+24 Planner/Coder samples using the exact three goals that produced malformed JSON in the granularity
+run, plus 8 follow-up samples isolating the one failure that appeared. Result: 31 of 32 samples
+produced schema-valid JSON (not the theoretical 100% a grammar promises -- a real, if rare, residual
+failure rate), the one miss was not `max_tokens` truncation (completion length nowhere near the
+budget on retry), and every successful sample had sane file paths and non-empty implementation
+content -- no sign of the 1.5B model's degradation.
+
+A full golden run (`evals/results/20260927T143255Z`, `--constrain-json` added on top of the
+granularity rule) then measured it against the real system:
+
+| Cause (of non-successes) | After the granularity rule (7/16) | + constrained decoding (11/16) |
+|---|---|---|
+| Total non-successes | 9 | 5 |
+| False success | 0 | 1 |
+| Malformed/wrong-shape JSON | 3 | 0 |
+| Own tests fail every retry | 6 | 4 |
+| Genuine review rejection | 0 | 0 |
+| Step budget exhausted | 0 | 0 |
+
+**11 of 16 (69%) -- malformed JSON dropped to zero, exactly as the pre-run verification predicted,**
+with no sign of the old content-quality trade-off.
+
+**One result needs its own honest accounting: `clarification_format_name-1` came back `false_success`
+-- the orchestrator reported `done`, and the hidden acceptance test failed.** Traced against the raw
+artifacts: the task is deliberately ambiguous ("format a person's name") specifically to test whether
+the Planner asks a clarifying question instead of guessing. It didn't -- it silently planned a
+`{first_name, last_name}` dict shape. The Coder then wrote tests and an implementation that both
+matched that same guess, so they passed each other, and the Planner's review approved a
+self-consistent but wrong answer ("tests pass as expected"). Nothing in the loop ever checks a
+guess against the real hidden test -- by design, the same way a human wouldn't have the answer key
+mid-task. **This is not something constrained decoding caused.** "Clarifying question asked on the
+underspecified task" has been 0 of 2 in every golden run measured so far, including this one and the
+44% run before it; what changed here is that the Coder's guessed tests happened to be internally
+consistent with its own guessed implementation, so nothing caught the mismatch. In the prior run the
+same kind of guess produced self-contradictory tests instead, which escalated honestly rather than
+reporting false success -- a difference in luck, not in the underlying gap.
+
+One of the remaining four non-successes is worth naming for the same reason: `feature_safe_divide-0`
+had the hidden acceptance test pass, but still escalated, because the Coder's own test asserted both
+`safe_divide('10', 2) is None` and `pytest.raises(TypeError)` for `safe_divide('10', '2')` in the
+same file -- two different, contradictory requirements for non-numeric input. No implementation can
+satisfy both, so its own tests failed against every attempt regardless of correctness.
+
+*In plain English:* telling the model's sampler it can only produce valid JSON worked -- the
+shape-level failures that were left are gone, and nothing about the underlying code got worse to buy
+that. But the false success is a reminder that fixing how reliably the system *says* something
+doesn't fix whether what it says is *true* -- that gap was already there (the Planner has never once
+asked the clarifying question this project's own test task is designed to require), constrained
+decoding just wasn't what exposed it before.
+
+Caveats: 16 runs, one pass, non-deterministic; a single false success on this sample size does not
+establish a rate, but the underlying cause (0 of 2 clarifying questions asked, in every run so far)
+is not new and is worth treating as a real, repeated finding rather than this run's noise.
+
 ---
 
 ## Appendix: the measurements behind this document
