@@ -408,3 +408,84 @@ def test_a_syntax_error_still_writes_the_files_to_disk_for_the_next_attempt_to_b
     agent.implement_step(_STEP)
 
     assert (tmp_path / "test_calc.py").read_text(encoding="utf-8") == broken_test
+
+
+def test_an_undefined_name_is_caught_before_running_pytest(tmp_path):
+    """A 95-attempt survey of real failed runs (TRACKER.md 2026-09-27) found this was the single
+    largest cause of the Coder's own tests failing every retry (35%): a test file (or the
+    implementation itself) uses a name -- usually a forgotten `import` -- it never actually binds.
+    Same pattern as the syntax pre-check: catch it with a static check and skip a pytest cycle
+    that's certain to fail with a noisy NameError traceback, same as a real one seen live
+    (evals/artifacts/20260927T161121Z/feature_add-1: 'import calc' silently dropped on a retry)."""
+    test_missing_import = "def test_add():\n    assert calc.add(1, 2) == 3\n"  # never imports calc
+    agent = CoderAgent(
+        llm_client=FakeLLMClient(
+            text=_proposal_json(test_missing_import, "def add(a, b):\n    return a + b\n")
+        ),
+        filesystem=WritableFilesystem(tmp_path),
+        test_runner=SpyTestRunner(SandboxedPytestRunner(tmp_path)),
+        task_id="t",
+    )
+
+    message = agent.implement_step(_STEP)
+
+    assert message.status == MessageStatus.OK
+    assert message.payload.tests_passed is False
+    assert "undefined name" in message.payload.test_output.lower()
+    assert "test_calc.py" in message.payload.test_output
+    assert agent._test_runner.run_calls == 0
+
+
+def test_an_undefined_name_in_the_implementation_file_is_also_caught(tmp_path):
+    """Not just test files: the same survey found this in the implementation too (a slugify
+    function using `string.punctuation` with no `import string`)."""
+    impl_missing_import = "def add(a, b):\n    return calc_helper(a, b)\n"  # calc_helper never defined
+    agent = CoderAgent(
+        llm_client=FakeLLMClient(
+            text=_proposal_json("def test_add():\n    assert add(1, 2) == 3\n", impl_missing_import)
+        ),
+        filesystem=WritableFilesystem(tmp_path),
+        test_runner=SpyTestRunner(SandboxedPytestRunner(tmp_path)),
+        task_id="t",
+    )
+
+    message = agent.implement_step(_STEP)
+
+    assert message.payload.tests_passed is False
+    assert "calc.py" in message.payload.test_output
+    assert agent._test_runner.run_calls == 0
+
+
+def test_an_unused_import_does_not_block_pytest(tmp_path):
+    """Only a genuinely undefined name is treated as a certain-failure worth pre-empting pytest
+    for -- an unused import is untidy, not broken, and pytest still runs normally."""
+    test_content = "import os\n\nfrom calc import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n"
+    agent = CoderAgent(
+        llm_client=FakeLLMClient(text=_proposal_json(test_content, "def add(a, b):\n    return a + b\n")),
+        filesystem=WritableFilesystem(tmp_path),
+        test_runner=SpyTestRunner(SandboxedPytestRunner(tmp_path)),
+        task_id="t",
+    )
+
+    message = agent.implement_step(_STEP)
+
+    assert message.payload.tests_passed is True
+    assert agent._test_runner.run_calls == 1
+
+
+def test_a_name_that_is_actually_imported_from_a_sibling_file_is_not_flagged(tmp_path):
+    """pyflakes checks each file in isolation, which is exactly what's wanted here: test_calc.py
+    correctly imports calc, and calc.py is a separate file in the same proposal -- this must never
+    be treated as an undefined name just because the two files are checked one at a time."""
+    test_content = "import calc\n\n\ndef test_add():\n    assert calc.add(1, 2) == 3\n"
+    agent = CoderAgent(
+        llm_client=FakeLLMClient(text=_proposal_json(test_content, "def add(a, b):\n    return a + b\n")),
+        filesystem=WritableFilesystem(tmp_path),
+        test_runner=SpyTestRunner(SandboxedPytestRunner(tmp_path)),
+        task_id="t",
+    )
+
+    message = agent.implement_step(_STEP)
+
+    assert message.payload.tests_passed is True
+    assert agent._test_runner.run_calls == 1
