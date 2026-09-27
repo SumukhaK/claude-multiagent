@@ -54,6 +54,9 @@ class CodeChangeReport(BaseModel):
     summary: str
     # path -> content of each file written (size-capped), so the reviewer can see the code
     file_contents: dict[str, str] = Field(default_factory=dict)
+    # the test runner's own output (size-capped), so a failing self-written test can be explained
+    # back to the Coder on retry instead of it retrying blind
+    test_output: str = ""
 
 
 class ToolExecutionReport(BaseModel):

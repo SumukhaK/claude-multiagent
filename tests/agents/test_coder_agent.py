@@ -296,3 +296,34 @@ def test_feedback_from_the_reviewer_is_put_in_the_prompt(agent_factory):
     agent_factory(llm).implement_step(_STEP, feedback="The test asserts nothing about negatives.")
 
     assert "The test asserts nothing about negatives." in llm.last_prompt
+
+
+def test_the_report_carries_the_test_runners_output(tmp_path, agent_factory):
+    """So a failing self-written test can be fed back to the Coder's next attempt (previously it
+    retried with no information about why its own tests failed)."""
+    test_content = "from calc import add\n\ndef test_add():\n    assert add(1, 2) == 4\n"  # wrong on purpose
+    impl_content = "def add(a, b):\n    return a + b\n"
+    agent = agent_factory(FakeLLMClient(text=_proposal_json(test_content, impl_content)))
+
+    message = agent.implement_step(_STEP)
+
+    assert message.payload.tests_passed is False
+    assert "assert" in message.payload.test_output.lower() or "failed" in message.payload.test_output.lower()
+
+
+def test_the_test_output_in_the_report_is_capped(tmp_path):
+    huge_test = "from calc import add\n\n" + "\n".join(
+        f"def test_{i}():\n    assert add(1, 1) == 999" for i in range(80)
+    )
+    agent = CoderAgent(
+        llm_client=FakeLLMClient(text=_proposal_json(huge_test, "def add(a, b):\n    return a + b\n")),
+        filesystem=WritableFilesystem(tmp_path),
+        test_runner=SandboxedPytestRunner(tmp_path),
+        task_id="t",
+        max_report_output_chars=400,
+    )
+
+    message = agent.implement_step(_STEP)
+
+    assert len(message.payload.test_output) < 500
+    assert message.payload.test_output.endswith("[truncated]")

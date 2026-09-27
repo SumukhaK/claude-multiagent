@@ -31,12 +31,12 @@ def plan_error(message):
     return AgentMessage(agent=AgentName.PLANNER, task_id="t", status=MessageStatus.ERROR, error=message)
 
 
-def coder_ok(step_id, tests_passed, files=None, summary="did the thing"):
+def coder_ok(step_id, tests_passed, files=None, summary="did the thing", test_output=""):
     return AgentMessage(
         agent=AgentName.CODER, task_id="t", status=MessageStatus.OK,
         payload=CodeChangeReport(
             step_id=step_id, files_changed=files or ["a.py"], tests_added=["test_a.py"],
-            tests_passed=tests_passed, summary=summary,
+            tests_passed=tests_passed, summary=summary, test_output=test_output,
         ),
     )
 

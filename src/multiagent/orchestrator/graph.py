@@ -158,13 +158,14 @@ def build_orchestrator_graph(
             step,
             context_for(state, step.description),
             goal=goal_for(state),
-            feedback=state.get("review_feedback") or "",
+            feedback=state.get("retry_feedback") or "",
         )
         step_count = state["step_count"] + 1
         if message.status == MessageStatus.ERROR:
             return {
                 "coder_error": message.error,
                 "step_retry_count": state["step_retry_count"] + 1,
+                "retry_feedback": f"Your last reply could not be used: {message.error}",
                 "step_count": step_count,
             }
         assert isinstance(message.payload, CodeChangeReport)
@@ -190,14 +191,22 @@ def build_orchestrator_graph(
         step_count = state["step_count"] + 1
 
         approved = report.tests_passed
-        feedback = None  # the reviewer's reason for a rejection, handed to the Coder's next attempt
+        feedback: str | None = None
         if report.tests_passed:
+            # Only a passing self-run of the Coder's own tests reaches the reviewer at all -- a
+            # failing one is rejected below without a review call (unchanged from before this fix).
             review_message = planner_agent.review_step(
                 step, report, context_for(state, step.description), goal=goal_for(state)
             )
             if review_message.status == MessageStatus.OK and not review_message.payload.approved:
                 approved = False
-                feedback = review_message.payload.feedback
+                feedback = f"A reviewer rejected this: {review_message.payload.feedback}"
+        else:
+            # The reviewer never saw this attempt, so the only evidence to hand back is the
+            # Coder's own test failure -- previously this retried with no information at all.
+            feedback = f"Your own tests failed:\n{report.test_output}" if report.test_output else (
+                "Your own tests failed, but no output was captured."
+            )
 
         if approved:
             remember(
@@ -209,13 +218,13 @@ def build_orchestrator_graph(
                 "current_step_index": state["current_step_index"] + 1,
                 "step_retry_count": 0,
                 "last_step_approved": True,
-                "review_feedback": None,
+                "retry_feedback": None,
                 "step_count": step_count,
             }
         return {
             "step_retry_count": state["step_retry_count"] + 1,
             "last_step_approved": False,
-            "review_feedback": feedback,
+            "retry_feedback": feedback,
             "step_count": step_count,
         }
 
