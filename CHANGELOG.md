@@ -108,3 +108,22 @@ run running. *Learned:* a flat result across three different, individually-verif
 itself a finding -- it means the remaining problems are no longer "the orchestrator doesn't tell
 the model what's wrong," and are now the model's own reliability and the Planner's step count
 colliding with a fixed retry budget.
+
+## Plan granularity moves the score
+A single additive instruction -- use exactly one step for a simple task, never a "review" or
+"understand" step -- took a plan averaging 2.96 steps down to 1.0 (measured before being written)
+and, on a full golden run, took the score from a flat 4 of 16 to 7 of 16, the first movement across
+four fixes. *Learned:* the earlier fixes were correct but were running inside plans with more steps
+than a fixed retry budget could afford; shrinking the plan to the size the task actually needs let
+the same retry machinery finally win often enough to show up in the score.
+
+## Constrained decoding, and a false success
+JSON-schema-constrained decoding (`CONSTRAIN_JSON`) was verified against the real model before
+being trusted -- it had already made things worse once, on the 1.5B model -- then measured on a
+full golden run: malformed JSON dropped to zero and the score reached 11 of 16 (69%), with no sign
+of the old content-quality trade-off. One run came back a `false_success` (orchestrator said
+`done`, the hidden test disagreed). *Learned:* the cause wasn't the new fix -- the Planner has
+asked the clarifying question its own ambiguous test task requires 0 of 2 times in every run
+measured so far; this run it just happened to guess a self-consistent wrong answer instead of one
+its own tests would catch. Fixing how reliably the system produces JSON didn't fix whether what it
+says is true, and that gap was always there.

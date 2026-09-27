@@ -492,3 +492,26 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   split into independent steps. Tests first (2 red, then green); 639 passed, 6 documented xfails.
   Verified again against the exact merged wording (not just the ablation's patch): 9 of 9 samples,
   1 actionable step each. Not yet measured with a full golden run.
+- 2026-09-27 — Full golden run measuring plan granularity (#49, `evals/results/20260927T094919Z`;
+  failed_experiment.md §12). **7/16 successes -- the first score movement across four fixes** (flat
+  4/16 the three runs before). Every one of the 9 non-success plans had exactly 1 step, confirmed
+  against raw artifacts, matching the ablation's prediction; step-budget exhaustion (new in §11)
+  dropped back to 0. Remaining causes: 3 malformed JSON, 6 own-tests-fail-every-retry, 0 review
+  rejections. Next: JSON-schema-constrained decoding (`CONSTRAIN_JSON`, built in an earlier phase,
+  off by default, never measured on this model) targets the malformed-JSON bucket -- but it was
+  already tried once, on the 1.5B model, and made the result worse by shifting failures into bad
+  file paths, so it needs its own real-server verification before a golden run, not just theory.
+- 2026-09-27 — Verified JSON-schema-constrained decoding against the real qwen2.5:7b Ollama server
+  (never done before -- REQUIREMENTS.md §11.3 flagged the Ollama `format` path as mock-tested only)
+  using the three goals that had just produced malformed JSON: 31 of 32 real-server samples came
+  back schema-valid, the one miss wasn't `max_tokens` truncation, and every successful sample had
+  sane file paths and non-empty content -- no sign of the 1.5B model's bad-path degradation.
+- 2026-09-27 — Full golden run with `--constrain-json` added on top of the granularity rule
+  (`evals/results/20260927T143255Z`; failed_experiment.md §13). **11/16 successes (69%).**
+  Malformed JSON dropped to 0 of 5 non-successes, exactly as the verification predicted, with no
+  content-quality regression. One `false_success` appeared (`clarification_format_name-1`,
+  orchestrator said `done`, hidden test failed) -- traced to a pre-existing gap, not a regression
+  from this fix: the Planner has asked the required clarifying question 0 of 2 times in every golden
+  run measured so far, including this one; this run it happened to guess a self-consistent wrong
+  answer instead of one its own tests caught. Next: get the Planner to actually ask a clarifying
+  question on an underspecified task instead of silently guessing.
