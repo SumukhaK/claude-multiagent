@@ -246,7 +246,8 @@ had earlier attempts that parsed fine. The reviews that rejected correct work
 include a one-step plan whose step matched the task exactly, and plans cut into steps that cannot
 be completed alone (for example "check if calc.py exists").
 
-**Problems in the system, not the model (item 1 has since been addressed, see the follow-up):**
+**Problems in the system, not the model (item 1 has since been addressed and confirmed, see
+section 9):**
 1. The review gate rejects correct work, including work that matches a one-step plan.
 2. Plans are split into steps that cannot each be tested and completed on their own, and the
    reviewer judges the whole task against one narrow step.
@@ -268,11 +269,43 @@ exact files): approval of correct code rose from 6 of 26 votes to 26 of 26. On 9
 code that pass the Coder's own tests but fail the hidden test, the new reviewer approved 6 of 27
 votes against 5 of 27 for the old one. The old reviewer approved correct and buggy code at about
 the same rate (23% against 19%), so its rejections carried no signal; the new one separates them
-(100% against 22%) but lets some subtle bugs through. Not yet measured on a full evaluation run.
+(100% against 22%) but lets some subtle bugs through.
 
 Caveats: 16 implementation runs, one pass each and non-deterministic, so read the counts as a
 pattern, not precise rates. "Every review verdict was a rejection" is read from the saved review
 responses of each run.
+
+## 9. The first real successes
+
+A full golden run with the fixed review gate (`evals/results/20260927T053525Z`, otherwise the same
+settings as section 8's run): **4 of 16 tasks succeeded** — the first genuine successes this project
+has produced, one each for `feature_add`, `feature_safe_divide`, `feature_password_strength` and
+`bugfix_average`. 1 of 16 was a false success. Every one of the remaining 11 escalations was checked
+individually against its saved artifacts (raw model output, review verdicts, step reports), and
+**none of them was the reviewer rejecting correct work** — the failure mode that caused 7 of 16
+escalations in section 8 did not recur once.
+
+| Cause (of the 12 non-successes) | Runs | Detail |
+|---|---|---|
+| Malformed JSON from the Coder | 6 | The same escaping bug as section 8 (item 3): unescaped quotes, disallowed backslash escapes, raw newlines in a JSON string |
+| The Coder's own tests fail on every retry of a step | 4 | The step never reaches review (only a passing `tests_passed` triggers it); in 2 of these 4 the *hidden* test actually passed on the final files on disk, so a real success was sitting there but the run still escalated on the Coder's own (wrong) test |
+| Step budget exceeded (12 steps) | 1 | `feature_add#1`: too many steps for the budget (item 2) |
+| False success | 1 | `feature_password_strength#1`: the Coder's own tests passed and the reviewer approved both steps ("the code correctly implements the logic to check if the password has at least 8 characters"), but the hidden test checks requirements the step never covered (rejecting a password with no digit, or no letter); the reviewer judges against the step and the code it can see, not an unseen answer key, so this kind of miss is an expected limit of the rubric, not a defect in it |
+
+So the largest remaining problem changed. It used to be the reviewer discarding correct work (item
+1, now fixed). It is now **the Coder's own self-written tests** (item 4): they caused 4 escalations
+outright and, in 2 more cases, hid a success that had already happened on disk. Malformed JSON
+(item 3) is unchanged and now the joint-largest cause.
+
+*In plain English:* the fix worked — the "reviewer" is no longer throwing away good work, and for
+the first time the system actually finished four tasks correctly. Looking at exactly why the other
+twelve failed, the reviewer was never the reason for a single one of them. The new biggest problem
+is that the coding worker sometimes writes its own tests wrong, so a step that was actually correct
+still gets marked as failed by its own broken test and never gets a second look.
+
+Caveats: 20 runs, one pass, non-deterministic; a 25% success rate on this run says nothing precise
+about the true rate, only that it is now measurably above zero. The false-success rate (1 of 16)
+should be watched, not ignored, as the review gate gets looser over time.
 
 ---
 

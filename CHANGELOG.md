@@ -86,3 +86,10 @@ and its feedback reaches the Coder's retry. *Learned:* a reviewer that cannot se
 rejects by deferring, and the old one rejected correct and buggy code at nearly the same rate, so
 its rejections carried no information; measure a gate on both correct and wrong cases, not just on
 how often it says no.
+
+## The first successes
+A full golden run on the fixed review gate produced 4 of 16 genuine successes (0 before). Checking
+every remaining failure individually confirmed the reviewer was not the cause of any of them; the
+Coder's own self-written tests now are, both by failing outright and by hiding two more successes
+that had already landed on disk. *Learned:* fixing the measured bottleneck can reveal the next one
+cleanly, if every failure is still checked rather than assumed to be the old cause.
