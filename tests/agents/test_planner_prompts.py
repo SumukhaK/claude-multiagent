@@ -37,3 +37,21 @@ def test_prompt_instructs_the_model_to_ask_instead_of_assume():
     prompt = render_planner_prompt(goal="fix the bug")
 
     assert "clarifying_questions" in prompt
+
+
+def test_prompt_tells_the_model_to_keep_simple_tasks_to_one_step():
+    """Measured live (TRACKER.md, 2026-09-27): the existing prompt averaged 2.96 steps/plan with
+    only 25% single-step, and produced non-actionable steps ("Understand the current structure
+    ..."). Adding this instruction, measured the same way, dropped both to 1.0 steps and 0%."""
+    prompt = render_planner_prompt(goal="fix the bug").lower()
+
+    assert "one step" in prompt
+    assert "understand" in prompt and "review" in prompt and "explore" in prompt
+
+
+def test_prompt_still_allows_splitting_a_task_that_has_independent_parts():
+    """The instruction is advisory ('only split when...'), not a hard one-step cap -- verified
+    live against the real model on genuinely compound goals before this was written."""
+    prompt = render_planner_prompt(goal="fix the bug").lower()
+
+    assert "only split" in prompt or "split into more steps" in prompt
