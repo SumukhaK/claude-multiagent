@@ -55,8 +55,14 @@ Everything above is built and tested. The first attempt used a very small AI mod
 English, is in [failed_experiment.md](failed_experiment.md). The project now runs on a larger model
 (7.6 billion "settings", `qwen2.5:7b-instruct`) that still fits on this laptop, and it
 mostly writes correct answers: the hidden answer key agreed with its work in 11 of 16 tasks (none
-before). The system still reported no successes, because its own "reviewer" step kept rejecting
-good work and a few answers were thrown away over formatting mistakes in the AI's reply; fixing those is the next job. Every failure is reported cleanly, every harmful request is refused,
+before). The system used to report no successes, because its own "reviewer" step kept rejecting good
+work. That has been fixed: the reviewer can now see the code it is judging, and in the first full
+test afterwards the system completed **4 of 16 tasks correctly on its own** — the first real
+successes since this project began. Looking closely at the tasks that still failed, the reviewer
+was no longer the reason for any of them; the new biggest problem is that the coding worker
+sometimes writes its own tests wrong, so correct work still gets marked as failed and never gets a
+second look. That is the next thing being fixed. Every failure is reported cleanly, every harmful
+request is refused,
 and a detailed activity log exists for test runs. A "context budget" tracker is built but not
 switched on, and there is no simple command-line front door yet; the technical notes list exactly
 what is and is not connected.

@@ -426,5 +426,13 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   approval 5 of 27 -> 6 of 27; on the 2 real wrong attempts, 1 caught by both. The old reviewer
   approved correct and buggy code at about the same rate (23% vs 19%), so its rejections carried no
   signal; the new one separates them (100% vs 22%) but lets some subtle bugs through. Caveats: 15 real
-  cases, mutants from only 3 source attempts, 2-3 votes each, one model. Not yet measured on a full
-  evaluation run. Still open: plan granularity, JSON escaping, the Coder's own wrong tests.
+  cases, mutants from only 3 source attempts, 2-3 votes each, one model.
+- 2026-09-27 — Full golden run on the fixed review gate (`evals/results/20260927T053525Z`). **4 of 16
+  tasks succeeded** (feature_add, feature_safe_divide, feature_password_strength, bugfix_average) —
+  the project's first genuine successes. 1 false success. Checked all 11 escalations individually:
+  none was the reviewer rejecting correct work (the fixed problem did not recur). New breakdown: 6
+  malformed JSON (item 3, unfixed), 4 the Coder's own tests fail on every retry so the step never
+  reaches review (item 4; 2 of these had the hidden test passing on disk the whole time), 1 step
+  budget exceeded (item 2), 1 false success (reviewer approved step-scoped-correct code that missed
+  a requirement outside its step — an expected limit, not a defect). Detail in failed_experiment.md
+  §9. The Coder's own tests are now the largest remaining problem; starting there next.
