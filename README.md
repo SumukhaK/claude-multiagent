@@ -221,15 +221,22 @@ one deliberately ambiguous golden task across every run measured — a real but 
 (0% to 33% ask rate on ambiguous goals measured in isolation, no false positives), but it's
 wording-sensitive enough that it hasn't yet moved that specific task's own outcome.
 
-What would most improve this next: the Coding agent's own test-writing reliability — writing
-tests that contradict each other, or that impose stricter requirements than the actual spec, and
-then failing its own bar even when the real implementation is correct — is now the dominant
-remaining failure mode, and it kept recurring at about the same rate through three separate
-orchestration fixes that each worked exactly as designed, so it likely needs a fix targeted at
-that specific problem rather than another orchestration change. A dedicated code model (e.g.
-`qwen2.5-coder`) instead of a general-instruct one is untested here and could plausibly help
-specifically that bottleneck. Closing the JSON-constrained decoding path's residual ~3% failure
-rate and generalizing the clarifying-question criteria beyond the specific wordings tested so far
-are smaller, lower-risk next steps. Every golden run's raw results are kept in `evals/results/`,
-and the full quantitative history — including the changes that made things *worse* and were
-rejected, not just the ones that worked — is in [failed_experiment.md](failed_experiment.md).
+The Coding agent's own test-writing reliability turned out to be the dominant remaining failure
+mode, so it was investigated directly rather than guessed at: a systematic survey of 95 real
+failed attempts across five runs split it into two distinct sub-causes, not one. **A forgotten
+`import`** (35% — a name used but never bound, in a test file or the implementation itself) is
+mechanically detectable, and is now caught by a static check (the same pattern as the syntax
+pre-check, using `pyflakes`) before a doomed pytest cycle runs. Confirmed working on the very next
+golden run: it caught two real forgotten imports live, precisely and instantly. That run still
+escalated anyway, though, which is itself informative — catching the mistake faster didn't help
+once the same fixed retry budget then had to absorb the real logic bug the import mistake had been
+masking. **The Coding agent inventing its own extra, stricter edge cases** beyond what was
+actually asked, then failing to satisfy them (~29%), is next — a genuine reasoning limit, not a
+mechanical one, so it will likely need scoping the Coding agent's own tests to what the plan step
+asked for rather than another static check. A dedicated code model (e.g. `qwen2.5-coder`) instead
+of a general-instruct one is untested here and could plausibly help both sub-causes. Closing the
+JSON-constrained decoding path's residual ~3% failure rate and generalizing the clarifying-question
+criteria beyond the specific wordings tested so far are smaller, lower-risk next steps. Every
+golden run's raw results are kept in `evals/results/`, and the full quantitative history —
+including the changes that made things *worse* and were rejected, not just the ones that worked —
+is in [failed_experiment.md](failed_experiment.md).

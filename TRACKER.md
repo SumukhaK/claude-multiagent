@@ -557,3 +557,16 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   historical failures. One unrelated `false_success` on `bugfix_slugify-1` noted (the Coder's own
   tests passed but didn't match the hidden spec -- a different, already-known category, out of
   scope here). Not yet measured with a full golden run.
+- 2026-09-27 — Golden run measuring the undefined-names fix (#53, `evals/results/20260927T171159Z`).
+  **10/16 (62%)** -- second-best run so far. The fix fired live for real, twice, in
+  `clarification_format_name-0`: caught two genuine forgotten-`import` mistakes instantly and
+  precisely. That run still escalated anyway -- informative, not a failure of the fix: fixing the
+  import cost 2 of the step's 3 retries, leaving only 1 to fix the real logic bug underneath (extra
+  whitespace not collapsed), which wasn't enough. Two of the 6 non-successes (`bugfix_average-0`,
+  `feature_add-1`) directly confirmed the *other* surveyed sub-cause -- the Coder inventing its own
+  extra edge cases (an unrequested `OverflowError` expectation, a stricter non-numeric-input
+  contract) and failing them despite the hidden test passing. Zero malformed JSON, zero review
+  rejections. One more `false_success` on `clarification_format_name-1` (same known pre-existing
+  gap). README's "what would most improve this next" paragraph updated with these concrete
+  findings. Next: the self-imposed-edge-case bucket -- likely needs scoping the Coder's own tests
+  to what the plan step actually asked for, not another static check.
