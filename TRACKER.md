@@ -462,3 +462,12 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   instance of the known plan-granularity problem (item 2). Next: a cheap, targeted fix -- check
   each proposed Python file with `ast.parse()` before running pytest, so a syntax error is reported
   back precisely and instantly instead of costing a full pytest cycle to discover.
+- 2026-09-27 — Syntax pre-check (`feat/syntax-precheck`), the cheap fix section 10 pointed to.
+  Every proposed `.py` file is checked with `ast.parse()` before pytest runs; a syntax error is
+  reported instantly and precisely (file, line, the exact defect) instead of paying for a full
+  pytest cycle to get a multi-KB collection traceback, and reuses the retry-feedback path from
+  #45 unchanged (no orchestrator changes). Tests first (4 red, then green); 637 passed, 6
+  documented xfails. Real-server smoke check on 1 task: no crash, and it surfaced a genuinely
+  different collection failure (an `ImportError`, not a `SyntaxError`) this fix correctly leaves
+  alone -- confirming the fix's scope is as narrow as intended. Not yet measured with a full
+  golden run.

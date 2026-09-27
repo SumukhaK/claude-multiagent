@@ -327,3 +327,84 @@ def test_the_test_output_in_the_report_is_capped(tmp_path):
 
     assert len(message.payload.test_output) < 500
     assert message.payload.test_output.endswith("[truncated]")
+
+
+class SpyTestRunner:
+    """Wraps a real SandboxedPytestRunner but records whether/how often pytest actually ran, so a
+    syntax pre-check can be proven to have skipped it (not just that the report looks right)."""
+
+    def __init__(self, real_runner):
+        self._real = real_runner
+        self.run_calls = 0
+
+    def run(self, targets=None):
+        self.run_calls += 1
+        return self._real.run(targets)
+
+
+def test_a_python_syntax_error_is_caught_before_running_pytest(tmp_path):
+    """Found live (failed_experiment.md 10): a model that writes syntactically broken Python gets
+    a noisy multi-KB pytest-collection traceback back, and often can't fix it. A precise, instant
+    ast.parse() check is both cheaper and clearer feedback."""
+    broken_test = "from calc import add\n\ndef test_add()\n    assert add(1, 2) == 3\n"  # missing ':'
+    agent = CoderAgent(
+        llm_client=FakeLLMClient(text=_proposal_json(broken_test, "def add(a, b):\n    return a + b\n")),
+        filesystem=WritableFilesystem(tmp_path),
+        test_runner=SpyTestRunner(SandboxedPytestRunner(tmp_path)),
+        task_id="t",
+    )
+
+    message = agent.implement_step(_STEP)
+
+    assert message.status == MessageStatus.OK
+    assert message.payload.tests_passed is False
+    assert "syntaxerror" in message.payload.test_output.lower()
+    assert "test_calc.py" in message.payload.test_output
+    assert agent._test_runner.run_calls == 0  # pytest never ran: no point collecting a file we know is broken
+
+
+def test_valid_python_still_runs_the_real_pytest_suite(tmp_path):
+    test_content = "from calc import add\n\ndef test_add():\n    assert add(1, 2) == 3\n"
+    impl_content = "def add(a, b):\n    return a + b\n"
+    agent = CoderAgent(
+        llm_client=FakeLLMClient(text=_proposal_json(test_content, impl_content)),
+        filesystem=WritableFilesystem(tmp_path),
+        test_runner=SpyTestRunner(SandboxedPytestRunner(tmp_path)),
+        task_id="t",
+    )
+
+    message = agent.implement_step(_STEP)
+
+    assert message.payload.tests_passed is True
+    assert agent._test_runner.run_calls == 1
+
+
+def test_syntax_errors_in_multiple_files_are_all_reported(tmp_path):
+    broken_test = "def test_add()\n    pass\n"  # missing ':'
+    broken_impl = "def add(a, b)\n    return a + b\n"  # missing ':'
+    agent = CoderAgent(
+        llm_client=FakeLLMClient(text=_proposal_json(broken_test, broken_impl)),
+        filesystem=WritableFilesystem(tmp_path),
+        test_runner=SpyTestRunner(SandboxedPytestRunner(tmp_path)),
+        task_id="t",
+    )
+
+    message = agent.implement_step(_STEP)
+
+    assert "test_calc.py" in message.payload.test_output
+    assert "calc.py" in message.payload.test_output
+    assert agent._test_runner.run_calls == 0
+
+
+def test_a_syntax_error_still_writes_the_files_to_disk_for_the_next_attempt_to_build_on(tmp_path):
+    broken_test = "def test_add()\n    pass\n"
+    agent = CoderAgent(
+        llm_client=FakeLLMClient(text=_proposal_json(broken_test, "def add(a, b):\n    return a + b\n")),
+        filesystem=WritableFilesystem(tmp_path),
+        test_runner=SpyTestRunner(SandboxedPytestRunner(tmp_path)),
+        task_id="t",
+    )
+
+    agent.implement_step(_STEP)
+
+    assert (tmp_path / "test_calc.py").read_text(encoding="utf-8") == broken_test
