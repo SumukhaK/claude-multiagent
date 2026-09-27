@@ -307,6 +307,49 @@ Caveats: 20 runs, one pass, non-deterministic; a 25% success rate on this run sa
 about the true rate, only that it is now measurably above zero. The false-success rate (1 of 16)
 should be watched, not ignored, as the review gate gets looser over time.
 
+## 10. Fixing the blind retries did not raise the score, but changed what breaks
+
+Sections 8 and 9 found two retry paths that fed the Coder nothing about why its last attempt
+failed: a malformed-JSON coder error, and the Coder's own tests failing (which never reaches
+review, so it was never covered by the review-gate fix). Both were fixed the same way as the
+review gate: feed the failure back (`evals/results/20260927T065105Z`, same settings as section 9).
+
+| | Section 9's run | This run |
+|---|---|---|
+| Task success | 4/16 | 4/16 |
+| False success | 1/16 | 0/16 |
+| Malformed JSON | 6 of 12 non-successes | **2** of 12 |
+| Coder's own tests fail every retry | 4 of 12 | **10** of 12 |
+
+**The success rate did not move. The malformed-JSON fix worked; the other one exposed a harder
+problem underneath it.** Every one of the 12 non-successes was checked individually again: **zero
+were review rejections** (every review call in this run was an approval), confirming section 9's
+finding held. All 10 "own tests fail" escalations are the Coder's own self-written test failing on
+every attempt within a step, so the step never reaches review at all.
+
+The feedback mechanism itself works as built: `bugfix_slugify-1`'s second attempt was fed a real
+pytest traceback from the first, and in `feature_add-1` the captured `test_output` correctly showed
+a Python `SyntaxError` (`def test_add()` — missing the colon) after the first attempt. **The model
+often cannot act on that information within three retries** — `feature_add-1`'s third attempt was
+still syntactically broken. Feeding back *what* went wrong is not the same as the model being able
+to *fix* it; that is a code-generation reliability limit at this model size, not a plumbing gap.
+
+A second, distinct cause showed up in the same forensic pass: `clarification_format_name-0`'s first
+plan step was *"Understand the current structure and naming conventions of the names.py file"* —
+not an actionable coding step. Forced to produce a test and implementation anyway, the Coder wrote
+`with pytest.raises(AssertionError): format_name('John Doe')`, a test that expects the function to
+fail on ordinary input. This is item 2 (plan granularity) from section 8, seen concretely rather
+than inferred from step counts.
+
+*In plain English:* the fix worked exactly as built — no more blind retries — and it visibly fixed
+one whole category of failure (garbled JSON replies). It didn't raise the score, because the bigger
+problem underneath was never about missing information: sometimes the model is told precisely what
+is wrong with its code and still cannot fix it in the tries it gets, and sometimes the plan itself
+hands it a step that was never codeable.
+
+Caveats: 20 runs, one pass, non-deterministic; a shift from 6 to 2 and from 4 to 10 on a base of 12
+is suggestive, not proof, on this sample size.
+
 ---
 
 ## Appendix: the measurements behind this document
