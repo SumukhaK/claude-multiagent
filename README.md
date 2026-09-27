@@ -15,6 +15,7 @@ by a fixed golden task set with hidden acceptance tests
 ## Architecture
 
 ```mermaid
+%%{init: {"themeVariables": {"lineColor": "#64748b"}}}%%
 flowchart TB
     U[User]
     GIN["Input guardrail<br/>refuses secret-fishing, malware requests,<br/>and input that contains a secret"]
@@ -59,7 +60,21 @@ flowchart TB
     O --- OTEL
     O -.- CTX
 
-    classDef notwired stroke:#c00,stroke-dasharray: 5 5
+    classDef entry fill:#eef2ff,stroke:#4f46e5,stroke-width:1px,color:#1f2937
+    classDef guard fill:#fff1f2,stroke:#e11d48,stroke-width:1px,color:#1f2937
+    classDef agent fill:#ecfdf5,stroke:#059669,stroke-width:1px,color:#1f2937
+    classDef llm fill:#f5f3ff,stroke:#7c3aed,stroke-width:1px,color:#1f2937
+    classDef boundary fill:#f8fafc,stroke:#64748b,stroke-width:1px,color:#1f2937
+    classDef support fill:#fefce8,stroke:#ca8a04,stroke-width:1px,color:#1f2937
+    classDef notwired fill:#fefce8,stroke:#dc2626,stroke-width:1px,stroke-dasharray:5 5,color:#1f2937
+
+    class U entry
+    class GIN guard
+    class Orchestrator,O agent
+    class P,C,T agent
+    class LLMs,OL llm
+    class Boundaries,PP,SS,ENV boundary
+    class MEM,OTEL support
     class CTX notwired
 ```
 
