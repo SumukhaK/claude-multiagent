@@ -71,15 +71,17 @@ class FakePlannerAgent:
         self.review_calls = []
         self.plan_contexts = []
         self.review_contexts = []
+        self.review_goals = []
 
     def create_plan(self, goal, code_context=""):
         self.plan_calls.append(goal)
         self.plan_contexts.append(code_context)
         return self._plan_responses.pop(0) if len(self._plan_responses) > 1 else self._plan_responses[0]
 
-    def review_step(self, step, report, code_context=""):
+    def review_step(self, step, report, code_context="", goal=""):
         self.review_calls.append(step.step_id)
         self.review_contexts.append(code_context)
+        self.review_goals.append(goal)
         return self._review_responses.pop(0) if len(self._review_responses) > 1 else self._review_responses[0]
 
 
@@ -89,11 +91,13 @@ class FakeCoderAgent:
         self.calls = []
         self.contexts = []
         self.goals = []
+        self.feedbacks = []
 
-    def implement_step(self, step, code_context="", goal=""):
+    def implement_step(self, step, code_context="", goal="", feedback=""):
         self.calls.append(step.step_id)
         self.contexts.append(code_context)
         self.goals.append(goal)
+        self.feedbacks.append(feedback)
         return self._responses.pop(0) if len(self._responses) > 1 else self._responses[0]
 
 

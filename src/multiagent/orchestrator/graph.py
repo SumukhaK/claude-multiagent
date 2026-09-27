@@ -48,12 +48,14 @@ logger = logging.getLogger(__name__)
 class PlannerAgentProtocol(Protocol):
     def create_plan(self, goal: str, code_context: str = "") -> AgentMessage: ...
     def review_step(
-        self, step: PlanStep, report: CodeChangeReport, code_context: str = ""
+        self, step: PlanStep, report: CodeChangeReport, code_context: str = "", goal: str = ""
     ) -> AgentMessage: ...
 
 
 class CoderAgentProtocol(Protocol):
-    def implement_step(self, step: PlanStep, code_context: str = "", goal: str = "") -> AgentMessage: ...
+    def implement_step(
+        self, step: PlanStep, code_context: str = "", goal: str = "", feedback: str = ""
+    ) -> AgentMessage: ...
 
 
 class MemoryProtocol(Protocol):
@@ -153,7 +155,10 @@ def build_orchestrator_graph(
         assert state["plan"] is not None
         step = state["plan"].steps[state["current_step_index"]]
         message = coder_agent.implement_step(
-            step, context_for(state, step.description), goal=goal_for(state)
+            step,
+            context_for(state, step.description),
+            goal=goal_for(state),
+            feedback=state.get("review_feedback") or "",
         )
         step_count = state["step_count"] + 1
         if message.status == MessageStatus.ERROR:
@@ -185,10 +190,14 @@ def build_orchestrator_graph(
         step_count = state["step_count"] + 1
 
         approved = report.tests_passed
+        feedback = None  # the reviewer's reason for a rejection, handed to the Coder's next attempt
         if report.tests_passed:
-            review_message = planner_agent.review_step(step, report, context_for(state, step.description))
+            review_message = planner_agent.review_step(
+                step, report, context_for(state, step.description), goal=goal_for(state)
+            )
             if review_message.status == MessageStatus.OK and not review_message.payload.approved:
                 approved = False
+                feedback = review_message.payload.feedback
 
         if approved:
             remember(
@@ -200,11 +209,13 @@ def build_orchestrator_graph(
                 "current_step_index": state["current_step_index"] + 1,
                 "step_retry_count": 0,
                 "last_step_approved": True,
+                "review_feedback": None,
                 "step_count": step_count,
             }
         return {
             "step_retry_count": state["step_retry_count"] + 1,
             "last_step_approved": False,
+            "review_feedback": feedback,
             "step_count": step_count,
         }
 

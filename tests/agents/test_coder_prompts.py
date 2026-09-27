@@ -124,3 +124,14 @@ def test_the_prompt_has_no_goal_section_when_no_goal_is_given():
     prompt = render_coder_prompt(step=PlanStep(step_id=1, description="Define add"))
 
     assert "Overall task" not in prompt
+
+
+def test_reviewer_feedback_is_shown_in_both_prompt_modes_and_absent_when_empty():
+    step = PlanStep(step_id=1, description="add add()")
+    for constrained in (False, True):
+        with_feedback = render_coder_prompt(step=step, constrained=constrained, feedback="Handle b == 0.")
+        without = render_coder_prompt(step=step, constrained=constrained)
+
+        assert "Handle b == 0." in with_feedback
+        assert "reviewer" in with_feedback.lower()
+        assert "reviewer" not in without.lower()

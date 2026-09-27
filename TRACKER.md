@@ -413,3 +413,18 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   eval and benchmark scripts default to Ollama with `--llama-server` for the optional backend, and
   the context budget for Ollama agents follows the shared context size. Agents, orchestrator,
   guardrails, tools, memory and the harness were unchanged.
+- 2026-09-27 — Review gate fixed (`feat/review-gate`). The 7B run showed correct work being thrown
+  away: in 7 of 16 runs the reviewer rejected every attempt, giving deferrals ("it is unclear
+  whether the tests verify X"), because it saw only file names and a one-line summary and judged
+  the whole task against one narrow step; and its feedback was discarded, so a retry was a re-roll.
+  Fixes: the Coder's report carries the (size-capped) file contents, the reviewer sees them wrapped
+  as data plus the overall goal, the rubric approves unless a concrete defect can be named, and a
+  rejection's feedback reaches the Coder's next attempt. Measured offline by replaying real saved
+  Coder attempts through the old and new reviewer on the 7B model (ground truth: the hidden test
+  run on each attempt's exact files): approval of correct code 6 of 26 votes -> 26 of 26; on 9
+  mutants of correct code that pass the Coder's own tests but fail the hidden test (3 votes each),
+  approval 5 of 27 -> 6 of 27; on the 2 real wrong attempts, 1 caught by both. The old reviewer
+  approved correct and buggy code at about the same rate (23% vs 19%), so its rejections carried no
+  signal; the new one separates them (100% vs 22%) but lets some subtle bugs through. Caveats: 15 real
+  cases, mutants from only 3 source attempts, 2-3 votes each, one model. Not yet measured on a full
+  evaluation run. Still open: plan granularity, JSON escaping, the Coder's own wrong tests.

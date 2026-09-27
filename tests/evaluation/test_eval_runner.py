@@ -47,7 +47,7 @@ class WritingCoder:
         self._sandbox, self._script, self._tests_added = sandbox, list(script), list(tests_added)
         self.calls, self.contexts = 0, []
 
-    def implement_step(self, step, code_context="", goal=""):
+    def implement_step(self, step, code_context="", goal="", feedback=""):
         self.contexts.append(code_context)
         files, tests_passed = self._script.pop(0) if len(self._script) > 1 else self._script[0]
         self.calls += 1

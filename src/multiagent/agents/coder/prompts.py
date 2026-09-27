@@ -57,12 +57,20 @@ Rules:
 - Write real code and real tests, never placeholders."""
 
 
+_MAX_FEEDBACK_CHARS = 800
+
+
 def render_coder_prompt(
-    step: PlanStep, code_context: str = "", constrained: bool = False, goal: str = ""
+    step: PlanStep,
+    code_context: str = "",
+    constrained: bool = False,
+    goal: str = "",
+    feedback: str = "",
 ) -> str:
     """Build the full prompt for one Coder turn. `constrained` says the response will be decoded
     against the proposal's JSON schema, which selects the words-only format description. `goal` is
-    the overall task: a step often drops details it carries, such as a file name."""
+    the overall task: a step often drops details it carries, such as a file name. `feedback` is the
+    reviewer's reason for rejecting the previous attempt, so a retry is informed, not a re-roll."""
     edge_cases_section = (
         f"\nKnown edge cases to handle: {', '.join(step.edge_cases)}" if step.edge_cases else ""
     )
@@ -71,8 +79,15 @@ def render_coder_prompt(
     goal_section = (
         f"Overall task (if it names a file, use that file name): {goal}\n\n" if goal else ""
     )
+    feedback_section = (
+        f"\n\nA reviewer rejected your previous attempt at this step. Fix what it names:\n"
+        f"{feedback[:_MAX_FEEDBACK_CHARS]}"
+        if feedback
+        else ""
+    )
     return (
         f"{_CODER_INSTRUCTIONS}\n\n{format_section}\n\n{goal_section}"
-        f"Step {step.step_id}: {step.description}{edge_cases_section}{context_section}\n\n"
+        f"Step {step.step_id}: {step.description}{edge_cases_section}{context_section}"
+        f"{feedback_section}\n\n"
         "Respond with the JSON object now."
     )

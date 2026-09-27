@@ -260,3 +260,39 @@ def test_implement_step_puts_the_goal_in_the_prompt(agent_factory):
     agent_factory(llm).implement_step(_STEP, goal="Add add(a, b) in calc.py")
 
     assert "Add add(a, b) in calc.py" in llm.last_prompt
+
+
+def test_the_report_carries_the_content_of_every_file_written(tmp_path, agent_factory):
+    test_content = "from calc import add\n\ndef test_add():\n    assert add(1, 2) == 3\n"
+    impl_content = "def add(a, b):\n    return a + b\n"
+    agent = agent_factory(FakeLLMClient(text=_proposal_json(test_content, impl_content)))
+
+    message = agent.implement_step(_STEP)
+
+    assert message.payload.file_contents == {"test_calc.py": test_content, "calc.py": impl_content}
+
+
+def test_a_long_file_is_truncated_in_the_report_but_written_in_full(tmp_path):
+    long_impl = "x = 1\n" * 2000  # 14,000 characters
+    test_content = "from calc import x\n\ndef test_x():\n    assert x == 1\n"
+    agent = CoderAgent(
+        llm_client=FakeLLMClient(text=_proposal_json(test_content, long_impl)),
+        filesystem=WritableFilesystem(tmp_path),
+        test_runner=SandboxedPytestRunner(tmp_path),
+        task_id="t",
+        max_report_file_chars=500,
+    )
+
+    message = agent.implement_step(_STEP)
+
+    shown = message.payload.file_contents["calc.py"]
+    assert len(shown) < 600 and shown.endswith("[truncated]")
+    assert (tmp_path / "calc.py").read_text(encoding="utf-8") == long_impl
+
+
+def test_feedback_from_the_reviewer_is_put_in_the_prompt(agent_factory):
+    llm = FakeLLMClient(text="not json")
+
+    agent_factory(llm).implement_step(_STEP, feedback="The test asserts nothing about negatives.")
+
+    assert "The test asserts nothing about negatives." in llm.last_prompt

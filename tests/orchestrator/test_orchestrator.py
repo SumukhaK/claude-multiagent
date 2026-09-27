@@ -227,3 +227,45 @@ def test_the_coder_gets_the_same_goal_the_planner_got_including_a_clarification_
 
     assert coder.goals[-1] == planner.plan_calls[-1]
     assert "FastAPI" in coder.goals[-1]
+
+
+def _review_loop(reviews, coder_reports, steps=None):
+    steps = steps or [PlanStep(step_id=1, description="add add()")]
+    planner = FakePlannerAgent(plan_responses=[plan_ok(steps)], review_responses=reviews)
+    coder = FakeCoderAgent(coder_reports)
+    tool = FakeToolAgent(commit_response=tool_ok("commit_and_push"), pr_response=tool_ok("create_pull_request"))
+    return planner, coder, make_orchestrator(planner, coder, tool)
+
+
+def test_the_reviewer_is_given_the_original_goal():
+    planner, _, orchestrator = _review_loop([review(1, approved=True)], [coder_ok(1, tests_passed=True)])
+
+    orchestrator.run(task_id="r1", goal="Add add(a, b) in calc.py", branch_name="feat/x")
+
+    assert planner.review_goals == ["Add add(a, b) in calc.py"]
+
+
+def test_a_rejection_sends_its_feedback_to_the_coder_on_the_retry():
+    """Before, a rejection re-ran the Coder with identical input, so a retry was only a re-roll."""
+    _, coder, orchestrator = _review_loop(
+        [review(1, approved=False, feedback="Handle b == 0."), review(1, approved=True)],
+        [coder_ok(1, tests_passed=True)],
+    )
+
+    result = orchestrator.run(task_id="r2", goal="g", branch_name="feat/x")
+
+    assert result["status"] == "done"
+    assert coder.feedbacks == ["", "Handle b == 0."]
+
+
+def test_feedback_is_cleared_once_a_step_is_approved_so_the_next_step_starts_clean():
+    steps = [PlanStep(step_id=1, description="one"), PlanStep(step_id=2, description="two")]
+    _, coder, orchestrator = _review_loop(
+        [review(1, approved=False, feedback="Fix it."), review(1, approved=True), review(2, approved=True)],
+        [coder_ok(1, tests_passed=True)],
+        steps,
+    )
+
+    orchestrator.run(task_id="r3", goal="g", branch_name="feat/x")
+
+    assert coder.feedbacks == ["", "Fix it.", ""]

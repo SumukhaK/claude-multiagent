@@ -52,6 +52,8 @@ class CodeChangeReport(BaseModel):
     tests_added: list[str]
     tests_passed: bool
     summary: str
+    # path -> content of each file written (size-capped), so the reviewer can see the code
+    file_contents: dict[str, str] = Field(default_factory=dict)
 
 
 class ToolExecutionReport(BaseModel):

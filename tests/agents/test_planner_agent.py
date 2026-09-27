@@ -223,3 +223,11 @@ def test_planner_constrains_review_to_the_step_review_schema():
     PlannerAgent(llm_client=llm, task_id="t", constrain_json=True).review_step(_STEP, _REPORT)
 
     assert llm.last_json_schema == StepReview.model_json_schema()
+
+
+def test_review_step_puts_the_goal_in_the_prompt():
+    llm = FakeLLMClient(text=_REVIEW_TEXT)
+
+    PlannerAgent(llm_client=llm, task_id="t").review_step(_STEP, _REPORT, goal="Add add(a, b) in calc.py")
+
+    assert "Add add(a, b) in calc.py" in llm.last_prompt
