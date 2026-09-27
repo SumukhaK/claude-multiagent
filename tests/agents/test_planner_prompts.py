@@ -76,3 +76,24 @@ def test_prompt_shows_a_worked_example_of_the_ask_shape():
     prompt = render_planner_prompt(goal="fix the bug")
 
     assert '"steps": [], "clarifying_questions": ["<question>"]}' in prompt
+
+
+def test_prompt_tells_the_model_to_state_edge_case_behavior_definitely_not_as_a_hint():
+    """Measured live (TRACKER.md, 2026-09-27): a hedged edge case ("may raise a TypeError")
+    produced a real coder test that contradicted itself for similar invalid inputs. This
+    instruction, measured the same way, produced 0 of 18 hedged edge cases (vs. an unmeasured
+    baseline that included at least one real hedge)."""
+    prompt = render_planner_prompt(goal="fix the bug").lower()
+
+    assert "definitely" in prompt
+    assert "hint" in prompt or "possibility" in prompt
+
+
+def test_prompt_forbids_a_step_that_only_adds_more_tests():
+    """Found live: a redundant second step ("Add a test case for each of the edge cases in the
+    function") that isn't actionable and isn't needed under TDD, and slipped past the existing
+    review/understand/explore rule because it isn't worded like one of those. Measured fix: 0 of 8
+    on the exact goal that had produced it live."""
+    prompt = render_planner_prompt(goal="fix the bug").lower()
+
+    assert "adds more tests" in prompt or "only adds" in prompt

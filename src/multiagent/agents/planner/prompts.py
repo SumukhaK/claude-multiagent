@@ -42,6 +42,27 @@ goal ("format a person's name") asked 0 of 6 in this same measurement -- a name 
 obviously-a-string case to the model even though the real spec takes two separate arguments. This
 is a genuine improvement, not a solved problem; a single golden run may not show it moving that
 one task's own outcome.
+
+The Coder's own-tests-fail category (TRACKER.md 2026-09-27, a 95-attempt survey) had a second
+sub-cause beyond a forgotten import: about 29% were the Coder failing its own extra, self-imposed
+edge cases. Investigating traced this to the Planner, not the Coder -- the Coder was faithfully
+testing exactly what the Planner's own `edge_cases` list demanded (e.g. `feature_add`'s step
+listed "a and b are both very large numbers that might cause overflow" for a function whose goal
+never mentions overflow), and a hedged edge case ("may raise a TypeError") produced tests that
+contradicted each other for the same input. Also found live: a redundant second step ("Add a test
+case for each of the edge cases in the function") that isn't actionable and isn't needed, since
+TDD means every step already includes its own tests -- it slipped past the existing "never a
+review/understand/explore step" rule because it isn't worded like one of those.
+
+Two fixes, measured separately before being kept: telling the model not to hedge a stated
+behavior worked (0 of 18 hedged edge cases, vs. prose that didn't mention hedging at all before);
+blocking the redundant test-only step worked (0 of 8 on the exact goal that had produced it live).
+A third attempt -- telling the model not to invent edge cases beyond what the goal's wording
+implies -- was measured and dropped: 0 of 18 samples showed any reduction in scope (a trivial
+`add(a, b)` still got up to 10 invented edge cases, including dicts and strings-as-numbers, with
+the instruction in the prompt). This looks like a deep default habit rather than something prose
+can suppress, the same lesson the rejected 1.5B full-prompt reword taught (Appendix F) -- not
+shipped, since an unproven instruction left in the prompt would be no different from a placeholder.
 """
 
 _PLANNER_INSTRUCTIONS = """You are the Planning agent in a multi-agent coding assistant.
@@ -49,7 +70,9 @@ _PLANNER_INSTRUCTIONS = """You are the Planning agent in a multi-agent coding as
 Think step by step. If existing code context is provided below, read it before proposing
 anything. Never assume unstated requirements: if the task is ambiguous or you are missing
 information you need, leave "steps" empty and put your questions in "clarifying_questions"
-instead of guessing. For each step, list realistic edge cases.
+instead of guessing. For each step, list realistic edge cases, and state each one's required
+behavior definitely (e.g. "returns None" or "raises TypeError"), never as a hint or possibility
+(e.g. "may raise an error") -- a hedged edge case invites tests that contradict each other.
 
 A goal is ambiguous specifically when it does not give at least one concrete example of the input
 and the exact output, or does not say what type or shape the input is (a single string? a dict?
@@ -61,7 +84,8 @@ Keep the plan small: use exactly ONE step for a simple task (one function, or on
 only split into more steps when each part can be implemented and tested on its own. Every step
 must be something the Coding agent can directly implement and test -- never a step like "review",
 "understand", or "explore" the existing code, since the Coding agent already reads relevant code
-as part of every step.
+as part of every step, and never a step that only adds more tests for a previous step's edge
+cases, since Test-Driven Development means every step already includes its own tests.
 
 Respond with ONLY a single JSON object, no prose before or after it, matching exactly one of these
 two shapes. If you have enough information:
