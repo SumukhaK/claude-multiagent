@@ -529,3 +529,31 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   harness's own golden task asked 0 of 6 in this measurement, so a full golden run may not move
   that one task's outcome even though the underlying fix is real. Not yet measured with a full
   golden run.
+- 2026-09-27 — Golden run measuring the clarifying-questions fix on top of the full stack
+  (`evals/results/20260927T161121Z`). **7/16** -- down from the best-observed 11/16. Traced
+  before writing this up: all 9 non-successes are the Coder's own-tests-fail category (zero
+  malformed JSON, zero review rejections, zero false success, plan granularity intact),
+  consistent with the run-to-run variance already seen in that category (4-10 across identical
+  configs before), not a regression from this fix. Own-tests-fail is now the clear dominant
+  bottleneck, so it's next.
+- 2026-09-27 — Root-caused the Coder's own-tests-fail category (`feat/coder-undefined-names`)
+  before guessing at a fix: surveyed all 95 own-tests-fail step attempts across five recent runs'
+  artifacts, not a handful of anecdotes. Findings: 35% are a forgotten `import` (a name used but
+  never bound, in a test file or the implementation itself -- e.g. `import calc` silently dropped
+  on a retry, or `string.punctuation` used with no `import string`), ~29% are the Coder failing
+  its own extra, self-imposed edge cases (not asked for) after 3 retries, ~12% a broadly wrong
+  implementation, ~11% syntax errors the existing pre-check already catches. Targeted the largest,
+  most mechanically fixable bucket first, same pattern as the syntax pre-check: added
+  `pyflakes` (an established library purpose-built for this, not a bespoke name-resolution
+  engine) as a static "undefined name" check run before pytest, alongside the existing
+  `ast.parse()` syntax check -- checks each file in isolation, so a legitimate cross-file import
+  (a test importing its sibling implementation file) is never flagged, only a name genuinely
+  never bound anywhere in that one file. Verified against the actual real-run failures that
+  motivated it (both examples above) before writing tests. Tests first (2 red -- plus 2 guard
+  tests for false positives, an unused import and a legitimate cross-file import, both already
+  green); 646 passed, 6 documented xfails. Real-server smoke check (4 runs): no crashes, the
+  existing syntax pre-check and normal pytest path both still worked correctly; the new check
+  didn't happen to fire in this small sample, but it's already verified against the real
+  historical failures. One unrelated `false_success` on `bugfix_slugify-1` noted (the Coder's own
+  tests passed but didn't match the hidden spec -- a different, already-known category, out of
+  scope here). Not yet measured with a full golden run.

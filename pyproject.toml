@@ -12,6 +12,7 @@ dependencies = [
     "langgraph>=0.2",
     "mem0ai>=2.2.1",
     "ollama>=0.6.2",
+    "pyflakes>=4.0.0",
 ]
 
 [dependency-groups]
