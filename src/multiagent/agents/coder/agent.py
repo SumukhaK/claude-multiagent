@@ -24,10 +24,12 @@ parsing, or a proposed file path escaping the sandbox — the last of which is v
 proposal can't cause a partial write.
 """
 
+import ast
+
 import httpx
 
 from multiagent.agents.coder.prompts import render_coder_prompt
-from multiagent.agents.coder.schemas import CodeChangeProposal
+from multiagent.agents.coder.schemas import CodeChangeProposal, ProposedFile
 from multiagent.agents.coder.response_parser import (
     CodeChangeParsingError,
     parse_code_change_response,
@@ -111,21 +113,42 @@ class CoderAgent:
         except OSError as exc:
             return self._error(f"coder could not write its proposed files: {exc}")
 
-        test_result = self._test_runner.run()
+        syntax_errors = self._python_syntax_errors(all_files)
+        if syntax_errors:
+            # Certain to fail pytest collection either way, so skip running it: ast.parse() is
+            # instant and its message is precise (file, line, the exact defect), unlike a multi-KB
+            # pytest-collection traceback -- found live, see failed_experiment.md 10.
+            tests_passed, test_output = False, "\n".join(syntax_errors)
+        else:
+            test_result = self._test_runner.run()
+            tests_passed, test_output = test_result.passed, test_result.output
 
         report = CodeChangeReport(
             step_id=step.step_id,
             files_changed=[file_change.path for file_change in all_files],
             tests_added=[file_change.path for file_change in proposal.test_files],
-            tests_passed=test_result.passed,
+            tests_passed=tests_passed,
             summary=proposal.summary,
             file_contents={
                 file_change.path: self._capped(file_change.content, self._max_report_file_chars)
                 for file_change in all_files
             },
-            test_output=self._capped(test_result.output, self._max_report_output_chars),
+            test_output=self._capped(test_output, self._max_report_output_chars),
         )
         return AgentMessage(agent=AgentName.CODER, task_id=self._task_id, status=MessageStatus.OK, payload=report)
+
+    @staticmethod
+    def _python_syntax_errors(files: list[ProposedFile]) -> list[str]:
+        """One precise message per `.py` file that isn't valid Python, or an empty list."""
+        errors = []
+        for file_change in files:
+            if not file_change.path.endswith(".py"):
+                continue
+            try:
+                ast.parse(file_change.content, filename=file_change.path)
+            except SyntaxError as exc:
+                errors.append(f"SyntaxError in {file_change.path}, line {exc.lineno}: {exc.msg}")
+        return errors
 
     @staticmethod
     def _capped(content: str, limit: int) -> str:
