@@ -350,6 +350,48 @@ hands it a step that was never codeable.
 Caveats: 20 runs, one pass, non-deterministic; a shift from 6 to 2 and from 4 to 10 on a base of 12
 is suggestive, not proof, on this sample size.
 
+## 11. Three fixes, three runs, the same score -- and a new constraint appears
+
+The syntax pre-check (`ast.parse()` before pytest, no orchestrator change) was measured the same
+way (`evals/results/20260927T080834Z`, same settings). **Still 4 of 16.** It fired three times in
+this run and worked exactly as built -- confirmed live, not inferred: `bugfix_average-0` got
+`SyntaxError in test_stats.py, line 3: expected ':'` instantly, and `feature_fizzbuzz-0` caught two
+separate syntax errors mid-task and recovered from both.
+
+| Cause (of 12 non-successes) | After the review gate | After retry feedback | After the syntax pre-check |
+|---|---|---|---|
+| False success | 1 | 0 | 0 |
+| Malformed/wrong-shape JSON | 6 | 2 | 5 |
+| Own tests fail every retry | 4 | 10 | 4 |
+| Genuine review rejection | 0 | 0 | **1** |
+| Step budget exhausted | 1 | 0 | **2** |
+
+"Own tests fail" roughly halved back down (10 to 4), consistent with the pre-check removing part
+of what drove it up. Malformed JSON went back up (2 to 5); on this sample size that is plausibly
+noise, not a traceable regression. **A genuine review rejection appeared for the first time**:
+`clarification_format_name-1` -- *"the implementation only handles the list case correctly but
+fails when name is a single str"* -- a real, correctly-caught edge-case bug, evidence the reviewer
+is not simply rubber-stamping everything it sees.
+
+**A new problem showed up: step-budget exhaustion on code that was working.**
+`feature_fizzbuzz-0` and `feature_password_strength-1` both had the hidden test passing and
+multiple genuine review approvals along the way, but ran out of the evaluation harness's 12-step
+budget before finishing. Every retry (each syntax-error catch, each review round) consumes a step
+of that same shared budget, and a multi-step plan doesn't leave much room for that. Three fixes in
+a row have each individually worked as designed and each shifted *where* the failure happens,
+without moving the count off 4 of 16 once. What's left points at two different things: the model's
+own code-generation reliability (it is now told exactly what's wrong and still can't always fix it
+within budget), and the Planner producing plans with more steps, or less actionable steps, than the
+fixed step budget can afford.
+
+*In plain English:* three separate, careful fixes in a row, each shown to work exactly as intended,
+and the number of finished tasks hasn't moved once. What's left isn't a wiring bug anymore -- it's
+the AI sometimes genuinely not being able to fix what it's told is wrong, and the planning worker
+sometimes drawing up more steps than the system allows it to safely retry through.
+
+Caveats: 20 runs, one pass, non-deterministic; three runs at exactly 4/16 is a pattern worth taking
+seriously, not proof that the rate is precisely 25%.
+
 ---
 
 ## Appendix: the measurements behind this document
