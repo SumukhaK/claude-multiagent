@@ -67,6 +67,25 @@ def test_create_plan_returns_needs_clarification_when_steps_are_empty_with_quest
     assert message.payload.clarifying_questions == ["which endpoint is affected?"]
 
 
+def test_create_plan_returns_needs_clarification_when_both_steps_and_questions_are_present():
+    """Measured live (TRACKER.md, 2026-09-27): given concrete ambiguity criteria, the real model
+    often hedges when it does ask -- real clarifying questions with a guessed step still attached,
+    rather than leaving "steps" empty as instructed. If "steps" took priority here, that guess
+    would be silently acted on and the model's own flagged uncertainty would be discarded. Respect
+    the question instead: it's the stronger signal."""
+    llm = FakeLLMClient(
+        text='{"kind": "plan", "goal": "format a name", '
+        '"steps": [{"step_id": 1, "description": "guessed shape", "edge_cases": []}], '
+        '"clarifying_questions": ["what type is the input?"]}'
+    )
+    agent = PlannerAgent(llm_client=llm, task_id="task-1")
+
+    message = agent.create_plan(goal="format a name")
+
+    assert message.status == MessageStatus.NEEDS_CLARIFICATION
+    assert message.payload.clarifying_questions == ["what type is the input?"]
+
+
 def test_create_plan_returns_error_when_the_llm_call_fails():
     llm = FakeLLMClient(error=httpx.ConnectError("connection refused"))
     agent = PlannerAgent(llm_client=llm, task_id="task-1")

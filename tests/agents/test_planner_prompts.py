@@ -55,3 +55,24 @@ def test_prompt_still_allows_splitting_a_task_that_has_independent_parts():
     prompt = render_planner_prompt(goal="fix the bug").lower()
 
     assert "only split" in prompt or "split into more steps" in prompt
+
+
+def test_prompt_gives_concrete_criteria_for_when_a_goal_is_ambiguous():
+    """Measured live (TRACKER.md, 2026-09-27): the prompt already said 'ask instead of guessing',
+    but the model asked 0 of 15 times on genuinely ambiguous goals regardless -- prose alone
+    wasn't enough. Concrete criteria (no example input/output, no stated input type), measured the
+    same way, raised that to 6 of 18 while still asking 0 of 18 times on clear-cut goals -- a real
+    but partial improvement, not a full fix (rate varies a lot by exact wording)."""
+    prompt = render_planner_prompt(goal="fix the bug").lower()
+
+    assert "concrete example" in prompt or "example input" in prompt
+    assert "input type" in prompt or "type or shape" in prompt
+
+
+def test_prompt_shows_a_worked_example_of_the_ask_shape():
+    """The model pattern-matches to whatever JSON shape is shown worked, not just to prose (the
+    same lesson as the granularity fix) -- so the ask path needs its own example, not just the
+    one steps-filled-in example the prompt already had."""
+    prompt = render_planner_prompt(goal="fix the bug")
+
+    assert '"steps": [], "clarifying_questions": ["<question>"]}' in prompt
