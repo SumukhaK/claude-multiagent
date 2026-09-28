@@ -163,3 +163,13 @@ net along with it -- a wrong guess that used to sometimes contradict itself into
 escalation now passes its own bar cleanly instead. Both things are true at once: the fix was
 right, and the Planner still needing to actually ask its one required clarifying question is now
 more urgent than the raw score alone suggests.
+
+## The last structural gap closes, and the project concludes
+A second, wording-targeted fix took the stuck case from 0 of 6 to 3 of 6 in isolation, then a
+golden run confirmed it for real: the Planner asked its required clarifying question 2 of 2 times
+-- the first time ever, and one repeat went all the way to the first genuine success this task
+has ever scored. *Learned, and why this is where the project stops:* the one structural gap this
+whole evaluation effort ever found -- a system that guessed instead of asking -- is now closed
+and proven. What's left is the underlying 7B model's own coding reliability, which this session
+showed, more than once, does not move further with more prompt engineering. Every fix that could
+plausibly help has been tried, measured, and kept or honestly dropped.

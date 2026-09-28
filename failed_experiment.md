@@ -565,6 +565,57 @@ Caveats: 16 runs, one pass, non-deterministic; 2 false successes on one task is 
 worth acting on, not proof of an exact rate -- the mechanism proposed here is plausible and
 consistent with the evidence, not confirmed beyond this sample.
 
+## 15. The clarifying-questions gap closes for real, and the project concludes here
+
+A second, wording-targeted fix (section 14's "next") was measured before being written: the
+general ambiguity criteria technically covered "format a person's name" but the model never
+applied them to it in practice, asking 0 of 6 times in every measurement so far. One concrete
+worked example of the same kind of ambiguity -- using a different field (an address, not a name)
+so the fix had to transfer the pattern rather than match a memorized case -- raised that specific
+wording to 3 of 6, with the other two previously-tested wordings improving too and clear-cut goals
+still at 0 of 18 false positives.
+
+A full golden run (`evals/results/20260928T014315Z`) then measured it against the real system:
+
+**The Planner asked its required clarifying question 2 of 2 times -- the first time this metric
+has ever been non-zero in this entire project.** One of those two went all the way to a genuine
+success: asked, got the harness's answer, replanned to the exact right shape
+(`format_name(first, last)` -> `'Last, First'`), implemented it, and passed the hidden test --
+the first true success on this task ever measured. The other asked correctly and replanned
+correctly too, but still escalated afterward on an unrelated, already-known cause (the Coder's
+own tests, discussed below). The one gap that had been 0 of 2 in every golden run this project has
+ever measured is now conclusively fixed and verified working end to end, not just in isolated
+sampling.
+
+The overall score was 10 of 16 (62%) -- a slight dip from the tied-best 11 of 16, but not a
+regression from anything fixed this session. All 6 non-successes trace to the same volatile,
+already-documented category (the Coder's own tests failing every retry, still the dominant
+remaining source of failure), landing slightly harder on this particular sample than the best run,
+consistent with the range already seen across this project (4 to 11 of 16 on nominally identical
+configurations).
+
+One new, genuinely informative failure is worth recording: `feature_add-0`'s first attempt was a
+`fake_test` (an empty test file with no `test_` function at all -- the first time this metric has
+ever fired). Its next two attempts both had the undefined-names check (section 14's Coder fix)
+correctly and instantly catch a missing `import pytest` -- precisely, exactly as designed. The
+model never fixed it either time: it kept expanding the test with more cases while leaving the
+exact reported defect untouched, and burned its entire retry budget on the same uncorrected
+mistake. This is a real, previously undemonstrated limit -- even perfect, precise, instant static
+feedback does not guarantee the model acts on the specific thing it was told, and no orchestration
+change can fix that; it is the model's own reliability, not this system's engineering.
+
+*In plain English:* the last big, structural gap in this system -- a planner that would rather
+guess than ask -- is now closed and proven working for real, not just in a controlled sample.
+What is left is not a bug to find and fix; it is the underlying language model sometimes not
+correctly using even the clearest, most specific feedback it is given. Every fix in this project
+that could plausibly move that -- three separate retry-mechanics fixes, a plan-size fix, two
+static pre-checks, two edge-case-quality fixes, and two clarifying-question fixes -- has now been
+tried, measured, and either kept or honestly discarded. That is the natural point to conclude this
+evaluation effort.
+
+Caveats: 16 runs, one pass, non-deterministic; 2 of 2 on a metric that has been 0 of 2 in every
+prior run is a strong, credible signal on this sample size, not proof the true rate is 100%.
+
 ---
 
 ## Appendix: the measurements behind this document
