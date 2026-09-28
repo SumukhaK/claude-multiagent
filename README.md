@@ -192,7 +192,8 @@ Further setup instructions land here as later phases add runnable pieces.
 
 We test this system the way you'd evaluate a new hire, not by reading its code: ten realistic
 tasks — features, bug fixes, an intentionally vague request, and attempts to misuse it — run
-against the real system end to end, checked against hidden tests it never sees.
+against the real system end to end, checked against hidden tests it never sees. The exact ten
+tasks, and what each one checks for, are in [GOLDEN_SET.md](GOLDEN_SET.md).
 
 **The starting point was a complete failure.** The first model we tried (a small,
 1.5-billion-parameter model) succeeded on 0 of 16 tasks. Switching to a larger,
