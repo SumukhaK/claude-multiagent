@@ -230,13 +230,31 @@ pre-check, using `pyflakes`) before a doomed pytest cycle runs. Confirmed workin
 golden run: it caught two real forgotten imports live, precisely and instantly. That run still
 escalated anyway, though, which is itself informative — catching the mistake faster didn't help
 once the same fixed retry budget then had to absorb the real logic bug the import mistake had been
-masking. **The Coding agent inventing its own extra, stricter edge cases** beyond what was
-actually asked, then failing to satisfy them (~29%), is next — a genuine reasoning limit, not a
-mechanical one, so it will likely need scoping the Coding agent's own tests to what the plan step
-asked for rather than another static check. A dedicated code model (e.g. `qwen2.5-coder`) instead
-of a general-instruct one is untested here and could plausibly help both sub-causes. Closing the
-JSON-constrained decoding path's residual ~3% failure rate and generalizing the clarifying-question
-criteria beyond the specific wordings tested so far are smaller, lower-risk next steps. Every
-golden run's raw results are kept in `evals/results/`, and the full quantitative history —
-including the changes that made things *worse* and were rejected, not just the ones that worked —
-is in [failed_experiment.md](failed_experiment.md).
+masking. **The second sub-cause (~29%) turned out not to be the Coding agent's fault at all** —
+checking the actual plan steps behind it showed the Planning agent's own `edge_cases` list was
+demanding the extra behavior (e.g. an overflow requirement invented for a plain `add` function),
+so the Coding agent was faithfully testing what it was told. Two real Planning-agent bugs were
+found and fixed instead: a *hedged* edge case ("may raise an error") that produced two
+self-contradicting test assertions, and a redundant step that only added more tests, which isn't
+needed under TDD and had slipped past the existing step-quality rule. A third candidate — telling
+the model not to invent edge cases beyond the goal's own wording — was measured and dropped: it
+had no effect at all, which looks like a deep default habit rather than something a prompt
+sentence can suppress.
+
+Fixing those two bugs worked exactly as measured — zero hedged edge cases, zero self-contradicting
+tests, on a run that tied the best score seen (11 of 16). But it surfaced a trade-off worth taking
+seriously: both repeats of the one deliberately ambiguous golden task came back a `false_success`
+(orchestrator said `done`, the hidden test disagreed) — the most seen in any run so far. The likely
+mechanism, plausible but not proven at this sample size: a wrong guess used to sometimes
+self-contradict its way into an honest escalation, and removing that inconsistency removed the
+accidental safety net along with the bug it was meant to fix. Both things are true at once — the
+fix was correct — and it sharpens what's now the clearest remaining priority: the Planning agent
+has asked its one required clarifying question 0 of 2 times in *every single golden run measured
+this entire project*, and a real, measured improvement to that behavior in isolation has still
+never once changed this specific task's own outcome. A dedicated code model (e.g. `qwen2.5-coder`)
+instead of a general-instruct one remains untested here and could plausibly help the Coding
+agent's remaining reliability gap. Closing the JSON-constrained decoding path's residual ~3%
+failure rate is a smaller, lower-risk next step. Every golden run's raw results are kept in
+`evals/results/`, and the full quantitative history — including the changes that made things
+*worse* and were rejected, not just the ones that worked — is in
+[failed_experiment.md](failed_experiment.md).

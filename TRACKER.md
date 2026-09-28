@@ -597,3 +597,16 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   escalations that did happen were a different, already-known cause (implementation-vs-self-test
   logic mismatches), not a reappearance of what this fix targets. Not yet measured with a full
   golden run.
+- 2026-09-28 — Golden run measuring the edge-case-quality fix (#55, `evals/results/20260927T184044Z`;
+  failed_experiment.md §14). **11/16 (69%) -- tied for the best score observed.** The fix worked
+  exactly as measured: zero hedged edge cases, zero redundant steps, zero self-contradictory tests
+  anywhere in this run. But both `clarification_format_name` repeats came back `false_success` --
+  the highest count in any run so far. Traced both: same wrong guessed interpretation each time,
+  and both times the now-definitely-worded edge cases produced a Coder test that passed cleanly
+  with no internal contradiction, where a hedge might previously have accidentally caused a
+  self-contradiction and an honest escalation instead. Plausible, not proven at this sample size,
+  but it sharpens the priority on the one gap that has been 0 of 2 in every golden run measured
+  this entire project: the Planner still never actually asks the clarifying question its own test
+  task requires. Next: a second pass at that gap, focused on this task's specific wording (the
+  first pass's own measurement found "format a person's name" asked 0 of 6 while other phrasings
+  asked 2-3 of 6).

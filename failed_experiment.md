@@ -503,6 +503,68 @@ Caveats: 16 runs, one pass, non-deterministic; a single false success on this sa
 establish a rate, but the underlying cause (0 of 2 clarifying questions asked, in every run so far)
 is not new and is worth treating as a real, repeated finding rather than this run's noise.
 
+## 14. Fixing the Coder's own-tests-fail category surfaces more false successes, not fewer
+
+Section 13's own-tests-fail non-successes were traced to two distinct causes, not one -- and, on
+inspection, neither was the Coder inventing anything. `feature_add-1`'s own edge cases came
+straight from the Planner's own `edge_cases` list ("a and b are both very large numbers that might
+cause overflow" for a plain `add`); the Coder was faithfully testing what it was told. Two real
+Planner-side bugs were found: a *hedged* edge case ("may raise a TypeError") let the Coder write
+two test assertions that contradicted each other for similar invalid inputs
+(`feature_safe_divide-0`, section 13); and a redundant second step ("Add a test case for each of
+the edge cases in the function") that isn't actionable under TDD slipped past the existing
+review/understand/explore rule because it isn't worded like one of those (`feature_palindrome-1`).
+
+Two fixes -- state edge-case behavior definitely, never hedged; block a test-only step -- were each
+measured against the real model before being kept: 0 of 18 samples hedged (down from a real hedge
+seen live before), 0 of 8 samples produced the redundant step on the exact goal that had produced
+it. A third candidate, telling the model not to invent edge cases beyond the goal's own wording,
+was measured and dropped: 0 of 18 samples showed any reduction in scope at all -- a trivial
+`add(a, b)` still got up to 10 invented edge cases (dicts, strings-as-numbers) with the instruction
+present. Not shipped; this looks like a deep default habit the model has, not something a prompt
+sentence can suppress, the same lesson the rejected 1.5B full-prompt reword taught (Appendix F).
+
+A full golden run (`evals/results/20260927T184044Z`) measured the two kept fixes:
+
+| Cause (of non-successes) | After undefined-names (10/16) | + edge-case fixes (11/16) |
+|---|---|---|
+| Total non-successes | 6 | 5 |
+| Own tests fail every retry | 3 | 3 |
+| False success | 1 | **2** |
+| Malformed/wrong-shape JSON | 0 | 0 |
+| Genuine review rejection | 0 | 0 |
+
+**11 of 16 (69%) -- tied for the best score observed, and the fix worked exactly as measured: zero
+hedged edge cases, zero redundant steps, zero self-contradictory tests anywhere in this run.** But
+it surfaced a real trade-off worth taking seriously, not just the headline number. Both
+`clarification_format_name` repeats came back `false_success` -- the highest count in any run so
+far. Traced both: the Planner guessed the same wrong interpretation in each (a single-string
+argument, not the real two-argument spec), and both times the now-definitely-worded edge cases
+produced a Coder test that passed cleanly on the first or second try, with no internal
+contradiction. That is consistent with a real mechanism, not proven at this sample size: a wrong
+guess used to sometimes self-contradict its way into an honest escalation (the hedge itself
+introducing the kind of inconsistency that happened to catch it), and removing the hedge removed
+that accidental safety net along with the bug it was actually meant to fix.
+
+This does not make the edge-case fix a mistake -- self-contradictory tests are a real defect
+regardless of what they occasionally catch by accident -- but it does sharpen the priority on the
+one gap that has been 0 of 2 in *every single golden run measured this entire project*: the Planner
+never actually asking the clarifying question its own test task is built to require. The
+clarifying-questions fix (section 13) was a genuine, measured, partial improvement in isolation,
+but it has never once changed this specific task's own outcome, and this run's evidence is the
+first sign the cost of leaving it unfixed may be trending toward more confidently-wrong answers
+rather than fewer.
+
+*In plain English:* fixing a real bug in how definitely the Planner states its requirements made
+the system's tests more trustworthy in general, but it happened to remove a lucky accident that was
+occasionally catching a different, older, unrelated bug -- the Planner still guessing instead of
+asking. Both things being separately true is the correct way to read this result: the fix was
+right, and the older problem is now more urgent than the raw score alone would suggest.
+
+Caveats: 16 runs, one pass, non-deterministic; 2 false successes on one task is a real signal
+worth acting on, not proof of an exact rate -- the mechanism proposed here is plausible and
+consistent with the evidence, not confirmed beyond this sample.
+
 ---
 
 ## Appendix: the measurements behind this document
