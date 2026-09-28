@@ -610,3 +610,22 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   task requires. Next: a second pass at that gap, focused on this task's specific wording (the
   first pass's own measurement found "format a person's name" asked 0 of 6 while other phrasings
   asked 2-3 of 6).
+- 2026-09-28 — Second pass at the clarifying-questions gap (`feat/planner-decomposition-ambiguity`).
+  Hypothesis: the general ambiguity criteria technically cover "format a person's name" (it asks
+  about argument count), but a name carries too strong a prior as *obviously* a single string for
+  the model to apply the abstract criteria to it in practice -- the real ambiguity is decomposition
+  (one string vs. separate first/last parts), not type. Added one concrete worked example of
+  exactly that decomposition ambiguity, using a *different* field (an address, not a name) so the
+  fix has to transfer the pattern rather than match a memorized case -- using the eval's own
+  wording as the example would just be an answer key. Measured against the real model before
+  being kept: the stuck wording rose from 0 of 6 to 3 of 6, and the other two previously-tested
+  ambiguous wordings improved too (2/6 to 3/6, 3/6 to 5/6) rather than regressing, with clear-cut
+  goals still at 0 of 18 false positives. Tests first; full suite: 649 passed, 6 documented
+  xfails. Real-server smoke check (4 real runs of the actual golden task): **the interrupt path
+  fired for real for the first time ever** -- asked, got the harness's fixed answer fed back
+  correctly, and replanned to the exact right shape (`format_name(first, last)` -> `'Last,
+  First'`), no more clarifying questions needed. That run still didn't succeed, but for a fully
+  unrelated, already-known reason (the Coder invented its own edge cases afterward and had a
+  real bug in one: `format_name('', 'Doe')` returned `'Doe, '` instead of `'Doe'`) -- not a flaw
+  in this fix. First non-zero "clarifying question asked" result (1/4) in any real run this
+  project has ever measured. Not yet measured with a full golden run.
