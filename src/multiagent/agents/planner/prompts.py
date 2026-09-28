@@ -63,6 +63,17 @@ implies -- was measured and dropped: 0 of 18 samples showed any reduction in sco
 the instruction in the prompt). This looks like a deep default habit rather than something prose
 can suppress, the same lesson the rejected 1.5B full-prompt reword taught (Appendix F) -- not
 shipped, since an unproven instruction left in the prompt would be no different from a placeholder.
+
+Second pass at the clarifying-questions gap's stuck wording (TRACKER.md 2026-09-28): "format a
+person's name" asked 0 of 6 in every measurement so far, even though the general ambiguity
+criteria technically cover it ("how many arguments?"). Hypothesis -- a name carries too strong a
+prior as *obviously* a single string, so the model doesn't apply the abstract criteria to it in
+practice; the real ambiguity isn't the type, it's whether the name is one string or split into
+first/last parts. Added one concrete worked example of exactly that decomposition ambiguity, using
+a *different* field (an address, not a name) so the model has to transfer the pattern rather than
+match a memorized case. Measured: the stuck wording rose from 0 of 6 to 3 of 6, and the other two
+previously-tested ambiguous wordings also improved (2/6 to 3/6, 3/6 to 5/6) rather than
+regressing, with clear-cut goals still at 0 of 18 false positives.
 """
 
 _PLANNER_INSTRUCTIONS = """You are the Planning agent in a multi-agent coding assistant.
@@ -76,9 +87,13 @@ behavior definitely (e.g. "returns None" or "raises TypeError"), never as a hint
 
 A goal is ambiguous specifically when it does not give at least one concrete example of the input
 and the exact output, or does not say what type or shape the input is (a single string? a dict?
-how many arguments?). Naming a function without an example is not enough information to implement
-correctly -- in that case, leave "steps" empty and ask exactly what is missing (the input type, or
-an example input/output pair) in "clarifying_questions", rather than guessing a shape.
+how many arguments?). This includes a field that sounds like one simple value but could plausibly
+be one string or split into separate parts -- for example, formatting an address could mean one
+address string, or separate street/city/postal-code arguments; a goal that doesn't say which is
+missing real information even though the field sounds simple at first glance. Naming a function
+without an example is not enough information to implement correctly -- in that case, leave "steps"
+empty and ask exactly what is missing (the input type, or an example input/output pair) in
+"clarifying_questions", rather than guessing a shape.
 
 Keep the plan small: use exactly ONE step for a simple task (one function, or one small fix), and
 only split into more steps when each part can be implemented and tested on its own. Every step

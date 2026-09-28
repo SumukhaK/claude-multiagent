@@ -97,3 +97,16 @@ def test_prompt_forbids_a_step_that_only_adds_more_tests():
     prompt = render_planner_prompt(goal="fix the bug").lower()
 
     assert "adds more tests" in prompt or "only adds" in prompt
+
+
+def test_prompt_shows_a_decomposition_ambiguity_example_that_is_not_the_golden_task_itself():
+    """Measured live (TRACKER.md, 2026-09-28): 'format a person's name' asked 0 of 6 in every
+    measurement even under the general ambiguity criteria -- a name reads as too obviously a
+    single string. A concrete worked example of the same *kind* of ambiguity (one field that
+    could be one value or split into parts), using a different field so the model has to
+    transfer the pattern rather than match a memorized case, raised that specific wording to 3
+    of 6. The example must not be the eval's own golden task, or this would just be an answer key."""
+    prompt = render_planner_prompt(goal="fix the bug").lower()
+
+    assert "split into separate parts" in prompt or "separate street" in prompt
+    assert "person's name" not in prompt
