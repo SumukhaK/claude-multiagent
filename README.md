@@ -4,13 +4,13 @@ A local-first, multi-agent AI coding assistant: a Planner, a Coder, and a Tool a
 under a strict orchestrator loop, aiming to turn a plain-language coding/debugging request into a
 tested, reviewed pull request — running entirely on local hardware, no paid APIs. It is judged
 by a fixed golden task set with hidden acceptance tests
-([REQUIREMENTS.md §11](REQUIREMENTS.md#11-evaluation-phase-10)), not by the model's own claims.
+([REQUIREMENTS.md §11](doc/REQUIREMENTS.md#11-evaluation-phase-10)), not by the model's own claims.
 
-- Technical requirements & design decisions: [REQUIREMENTS.md](REQUIREMENTS.md)
-- Plain-English explanation: [NON_TECHNICAL.md](NON_TECHNICAL.md)
-- Phase-by-phase plan & status: [TRACKER.md](TRACKER.md)
+- Technical requirements & design decisions: [REQUIREMENTS.md](doc/REQUIREMENTS.md)
+- Plain-English explanation: [NON_TECHNICAL.md](doc/NON_TECHNICAL.md)
+- Phase-by-phase plan & status: [TRACKER.md](doc/TRACKER.md)
 - Build/process rules: [CLAUDE.md](CLAUDE.md)
-- What went wrong with the first (1.5B) local model: [failed_experiment.md](failed_experiment.md)
+- What went wrong with the first (1.5B) local model: [failed_experiment.md](doc/failed_experiment.md)
 
 ## Architecture
 
@@ -81,7 +81,7 @@ flowchart TB
 Solid boxes are wired into the running system. **The red dashed box is built and unit-tested but
 not yet connected to it** — context budgeting exists as a module, but nothing calls it (verified by
 searching the code; see
-[REQUIREMENTS.md §12](REQUIREMENTS.md#12-wiring-audit-what-is-built-versus-what-runs)). Memory is
+[REQUIREMENTS.md §12](doc/REQUIREMENTS.md#12-wiring-audit-what-is-built-versus-what-runs)). Memory is
 wired as an optional injection but no entrypoint or evaluation run enables it. Tracing is wired
 into the stack the evaluation builds (`build_real_system`): every LLM, agent and git call is a span
 under one root span per run, written as JSON lines to `logs/traces.jsonl`, with failures in
@@ -90,15 +90,15 @@ under one root span per run, written as JSON lines to `logs/traces.jsonl`, with 
 **Design principles:** least-privilege tool access per agent, structured JSON contracts between
 agents (never free text), tool output is always treated as data (never as instructions), bounded
 retries with no infinite loops, and every agent/tool call logged and traced for evaluation. Full
-rationale in [REQUIREMENTS.md](REQUIREMENTS.md).
+rationale in [REQUIREMENTS.md](doc/REQUIREMENTS.md).
 
 ## Hardware this runs on
 
 AMD Ryzen 7 4800H (8c/16t), 16GB RAM, NVIDIA GTX 1650 Ti (4GB VRAM). The agents run on
 `qwen2.5:7b-instruct` (7.6B parameters, 4.7GB), which does not fit the GPU entirely, so Ollama
 splits it between GPU and CPU (measured about 8 tokens/s here). See
-[REQUIREMENTS.md §3](REQUIREMENTS.md#3-hardware--local-inference-design) and
-[TRACKER.md — Decisions log](TRACKER.md#1-decisions-log).
+[REQUIREMENTS.md §3](doc/REQUIREMENTS.md#3-hardware--local-inference-design) and
+[TRACKER.md — Decisions log](doc/TRACKER.md#1-decisions-log).
 
 ## Tools & libraries
 
@@ -118,21 +118,21 @@ splits it between GPU and CPU (measured about 8 tokens/s here). See
 
 ## Status
 
-Development follows the phase plan in [TRACKER.md](TRACKER.md). This section grows with a short
+Development follows the phase plan in [TRACKER.md](doc/TRACKER.md). This section grows with a short
 note per phase as it lands.
 
 - **Phase 0 — Project scaffolding**: governance docs, config skeleton, and this repo created.
 - **Phase 1 — Local model serving**: a `llama-server` launcher and an Ollama client, both behind
   a shared `LLMClient` interface. Ollama is the backend the system now runs on; `llama-server`
   remains as an optional backend. See
-  [REQUIREMENTS.md §3](REQUIREMENTS.md#3-hardware--local-inference-design).
+  [REQUIREMENTS.md §3](doc/REQUIREMENTS.md#3-hardware--local-inference-design).
 - **Phase 2 — Shared infra**: the strict `AgentMessage` JSON contract sub-agents communicate
   through, OpenTelemetry tracing + a structured failure log for every agent/tool call, and a
   guardrail filter blocking secret-fishing requests while treating all tool output as inert data.
 - **Phase 3 — Context engineering**: every agent's conversation history is tracked against a
   token budget derived from the configured context size and compacted before it would
   overflow — stale tool output evicted first, then older turns summarized. See
-  [REQUIREMENTS.md §6](REQUIREMENTS.md#6-context-engineering-treat-context-as-a-budget).
+  [REQUIREMENTS.md §6](doc/REQUIREMENTS.md#6-context-engineering-treat-context-as-a-budget).
 - **Phase 4 — Planning agent**: a sandboxed read-only filesystem tool, a prompt template, a
   response parser (handles reasoning blocks and malformed/truncated JSON), and `PlannerAgent`,
   composing them into "produce a plan or ask for clarification".
@@ -156,18 +156,18 @@ note per phase as it lands.
   store, no LLM, telemetry off) behind a project-scoped `MemoryStore`, wired into the
   orchestrator: agents get relevant recalled context, and only *verified* outcomes (approved
   steps, clarification answers, completed tasks) are remembered. Recall ~0.02s, +4 MiB GPU. See
-  [REQUIREMENTS.md §9](REQUIREMENTS.md#9-memory-layer-phase-8).
+  [REQUIREMENTS.md §9](doc/REQUIREMENTS.md#9-memory-layer-phase-8).
 - **Phase 9 — Security hardening**: an audit of what was actually true, then fixes verified against
   the real system — protected paths (the Planner could read `.env`), outbound secret scanning,
   `git add` hardening, the input guardrail actually wired in (it was called nowhere) and rebuilt
   against a measured corpus, and a scrubbed environment for model-written tests. The honest
-  headline is in [REQUIREMENTS.md §10.1](REQUIREMENTS.md#101-threat-model-what-is-mitigated-and-what-is-not):
+  headline is in [REQUIREMENTS.md §10.1](doc/REQUIREMENTS.md#101-threat-model-what-is-mitigated-and-what-is-not):
   the Coder still executes model-written code with the developer's full OS privileges.
 - **Phase 10 — Evaluation**: ten golden tasks with hidden acceptance tests, Wilson-interval
   metrics, and a runner that drives the real stack (real agents, real pytest, real git against a
   local bare remote) and keeps the evidence of every run that does not succeed. See
-  [REQUIREMENTS.md §11](REQUIREMENTS.md#11-evaluation-phase-10). The first local model (1.5B
-  parameters) did not pass it: [failed_experiment.md](failed_experiment.md).
+  [REQUIREMENTS.md §11](doc/REQUIREMENTS.md#11-evaluation-phase-10). The first local model (1.5B
+  parameters) did not pass it: [failed_experiment.md](doc/failed_experiment.md).
 
 ## Running locally
 
@@ -193,7 +193,7 @@ Further setup instructions land here as later phases add runnable pieces.
 We test this system the way you'd evaluate a new hire, not by reading its code: ten realistic
 tasks — features, bug fixes, an intentionally vague request, and attempts to misuse it — run
 against the real system end to end, checked against hidden tests it never sees. The exact ten
-tasks, and what each one checks for, are in [GOLDEN_SET.md](GOLDEN_SET.md).
+tasks, and what each one checks for, are in [GOLDEN_SET.md](doc/GOLDEN_SET.md).
 
 **The starting point was a complete failure.** The first model we tried (a small,
 1.5-billion-parameter model) succeeded on 0 of 16 tasks. Switching to a larger,
@@ -221,4 +221,4 @@ proved directly, more than once, that more instructions don't fix that. That's a
 model itself, not of the engineering around it — the honest, natural place to stop.
 
 The complete run-by-run record — every experiment, every number, and every fix that didn't pan
-out — is in [failed_experiment.md](failed_experiment.md) and [TRACKER.md](TRACKER.md).
+out — is in [failed_experiment.md](doc/failed_experiment.md) and [TRACKER.md](doc/TRACKER.md).
