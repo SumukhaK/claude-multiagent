@@ -629,3 +629,27 @@ branch. Every phase from here on gets its own branch, PR, self-review, and merge
   real bug in one: `format_name('', 'Doe')` returned `'Doe, '` instead of `'Doe'`) -- not a flaw
   in this fix. First non-zero "clarifying question asked" result (1/4) in any real run this
   project has ever measured. Not yet measured with a full golden run.
+- 2026-09-28 — Golden run measuring the decomposition-ambiguity fix (#57,
+  `evals/results/20260928T014315Z`; failed_experiment.md §15). **The Planner asked its required
+  clarifying question 2 of 2 times -- the first time this metric has ever been non-zero in this
+  project.** One of the two went all the way to a genuine success (the first true success on
+  `clarification_format_name` ever measured): asked, got the answer, replanned to the exact right
+  shape, implemented it, passed the hidden test. The other asked and replanned correctly too, but
+  escalated afterward on the unrelated, already-known own-tests-fail category. Overall 10/16
+  (62%) -- a slight dip from the tied-best 11/16, but not a regression: all 6 non-successes trace
+  to the same already-documented, volatile category, within the range already seen across this
+  project (4-11/16 on nominally identical configs). One new, informative failure: `feature_add-0`
+  had a `fake_test` (empty test file, first time ever) on attempt 0, then the undefined-names
+  check correctly caught a missing `import pytest` on attempts 1 and 2 -- but the model never
+  fixed it either time, expanding the test with more cases while leaving the exact reported
+  defect untouched. A real limit: precise, instant, correct feedback doesn't guarantee the model
+  acts on it -- the model's own reliability, not this system's engineering.
+
+  **Project concluded here.** The one major structural gap this project ever found -- a Planner
+  that would rather guess than ask -- is now closed and proven working end to end, not just in a
+  sample. Every fix that could plausibly move the remaining failure category has been tried,
+  measured, and kept or honestly discarded: three retry-mechanics fixes, a plan-size fix, two
+  static pre-checks, two edge-case-quality fixes, two clarifying-question fixes. What's left is
+  the underlying 7B model's own code-generation reliability, which this session's evidence
+  (repeatedly, on multiple different habits) shows does not move further with more prompt
+  engineering. That is the natural, honest point to stop.

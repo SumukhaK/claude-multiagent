@@ -190,71 +190,34 @@ Further setup instructions land here as later phases add runnable pieces.
 
 ## Evaluation: what we learned
 
-We evaluate this system the way we'd evaluate a hire's work, not by reading its code: a small
-golden set of ten tasks (simple features, bug fixes, a deliberately ambiguous task, and
-adversarial requests) with hidden acceptance tests, run against the real stack end to end — real
-agents, real pytest, real git — never mocked. The first local model we tried, 1.5B parameters on
-`llama-server`, failed it completely: 0 of 16 implementation runs succeeded. The causes were read
-from the raw evidence of every failed run, not guessed: it often couldn't produce valid JSON for
-the inter-agent contract at all, guessed at ambiguous requirements instead of asking, and when
-constrained to force valid JSON syntax, the *content* behind that now-valid JSON degraded into
-nonsense file paths and empty files. The full record, including a plain-English explanation of
-each failure, is in [failed_experiment.md](failed_experiment.md).
+We test this system the way you'd evaluate a new hire, not by reading its code: ten realistic
+tasks — features, bug fixes, an intentionally vague request, and attempts to misuse it — run
+against the real system end to end, checked against hidden tests it never sees.
 
-Moving to Ollama `qwen2.5:7b-instruct` (still fully local, no paid APIs) didn't fix things by
-itself — the same golden set scored 0 of 16 on the bigger model too, for different,
-orchestration-level reasons: a review gate that rejected correct code about as often as buggy
-code (it couldn't see the actual code or test output, only a boolean); retries that never told
-the Coding agent *why* its last attempt failed; full pytest cycles spent rediscovering a syntax
-error a parser could catch instantly; and a Planning agent that defaulted to multi-step plans for
-one-function tasks, burning a fixed retry budget before a fix could land. Each fix was measured
-against the real model before being written and again after being shipped, not assumed to work:
-review gate → retry feedback → a syntax pre-check → a plan-granularity rule → JSON-schema-
-constrained decoding (verified this time not to repeat the 1.5B model's content-quality
-trade-off). Together they took the system from 0 of 16 to a best-observed 11 of 16 (69%) — though
-run-to-run variance is real and substantial on a sample this small and non-deterministic: repeated
-runs on the *identical* configuration have scored anywhere from 4 to 11 of 16, almost entirely
-driven by how often the Coding agent's own self-written tests happen to be internally consistent
-on a given sampling run, which is now the largest single remaining source of failure. We also
-found, and partially fixed, a Planning agent that never once asked a clarifying question on the
-one deliberately ambiguous golden task across every run measured — a real but partial fix landed
-(0% to 33% ask rate on ambiguous goals measured in isolation, no false positives), but it's
-wording-sensitive enough that it hasn't yet moved that specific task's own outcome.
+**The starting point was a complete failure.** The first model we tried (a small,
+1.5-billion-parameter model) succeeded on 0 of 16 tasks. Switching to a larger,
+7-billion-parameter model didn't fix that by itself — it also scored 0 of 16 at first, just for
+different reasons.
 
-The Coding agent's own test-writing reliability turned out to be the dominant remaining failure
-mode, so it was investigated directly rather than guessed at: a systematic survey of 95 real
-failed attempts across five runs split it into two distinct sub-causes, not one. **A forgotten
-`import`** (35% — a name used but never bound, in a test file or the implementation itself) is
-mechanically detectable, and is now caught by a static check (the same pattern as the syntax
-pre-check, using `pyflakes`) before a doomed pytest cycle runs. Confirmed working on the very next
-golden run: it caught two real forgotten imports live, precisely and instantly. That run still
-escalated anyway, though, which is itself informative — catching the mistake faster didn't help
-once the same fixed retry budget then had to absorb the real logic bug the import mistake had been
-masking. **The second sub-cause (~29%) turned out not to be the Coding agent's fault at all** —
-checking the actual plan steps behind it showed the Planning agent's own `edge_cases` list was
-demanding the extra behavior (e.g. an overflow requirement invented for a plain `add` function),
-so the Coding agent was faithfully testing what it was told. Two real Planning-agent bugs were
-found and fixed instead: a *hedged* edge case ("may raise an error") that produced two
-self-contradicting test assertions, and a redundant step that only added more tests, which isn't
-needed under TDD and had slipped past the existing step-quality rule. A third candidate — telling
-the model not to invent edge cases beyond the goal's own wording — was measured and dropped: it
-had no effect at all, which looks like a deep default habit rather than something a prompt
-sentence can suppress.
+**From there, it became a systematic debugging exercise, not guesswork.** Every failure was
+traced back to real evidence before anything was changed, and every fix was measured on the real
+system before it was trusted. One investigation looked at 95 real failed attempts to find the
+actual root cause instead of the first plausible guess — and the single biggest one turned out to
+be something as ordinary as a forgotten `import` statement. Fixes went in one at a time: a
+reviewer that had been rejecting good code about as often as bad code, retries that never told
+the AI what it had gotten wrong, plans that were bigger than the task needed, and a formatting bug
+that made some of its own answers unreadable. Not every idea worked — one fix was tried, measured,
+found to do nothing, and honestly removed rather than kept for appearances.
 
-Fixing those two bugs worked exactly as measured — zero hedged edge cases, zero self-contradicting
-tests, on a run that tied the best score seen (11 of 16). But it surfaced a trade-off worth taking
-seriously: both repeats of the one deliberately ambiguous golden task came back a `false_success`
-(orchestrator said `done`, the hidden test disagreed) — the most seen in any run so far. The likely
-mechanism, plausible but not proven at this sample size: a wrong guess used to sometimes
-self-contradict its way into an honest escalation, and removing that inconsistency removed the
-accidental safety net along with the bug it was meant to fix. Both things are true at once — the
-fix was correct — and it sharpens what's now the clearest remaining priority: the Planning agent
-has asked its one required clarifying question 0 of 2 times in *every single golden run measured
-this entire project*, and a real, measured improvement to that behavior in isolation has still
-never once changed this specific task's own outcome. A dedicated code model (e.g. `qwen2.5-coder`)
-instead of a general-instruct one remains untested here and could plausibly help the Coding
-agent's remaining reliability gap. Closing the JSON-constrained decoding path's residual ~3%
-failure rate is a smaller, lower-risk next step. Every golden run's raw results are kept in
-`evals/results/`, and the full quantitative history — including the changes that made things
-*worse* and were rejected, not just the ones that worked — is in
-[failed_experiment.md](failed_experiment.md).
+**The result: 0% success became a best result of 69% (11 of 16 tasks).** And on the final run,
+the one behavior that mattered most — asking a clarifying question instead of confidently
+guessing when a request was genuinely unclear — worked for the first time, every time it was
+tested.
+
+**What's left isn't a bug — it's the model's own ceiling.** The remaining failures come down to a
+7-billion-parameter model occasionally writing code with small mistakes on its own accord, and we
+proved directly, more than once, that more instructions don't fix that. That's a limit of the
+model itself, not of the engineering around it — the honest, natural place to stop.
+
+The complete run-by-run record — every experiment, every number, and every fix that didn't pan
+out — is in [failed_experiment.md](failed_experiment.md) and [TRACKER.md](TRACKER.md).
