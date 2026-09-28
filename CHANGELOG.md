@@ -127,3 +127,39 @@ asked the clarifying question its own ambiguous test task requires 0 of 2 times 
 measured so far; this run it just happened to guess a self-consistent wrong answer instead of one
 its own tests would catch. Fixing how reliably the system produces JSON didn't fix whether what it
 says is true, and that gap was always there.
+
+## The Planner still won't ask
+Baseline measured first: 0 of 15 asks on genuinely ambiguous goals, prose alone wasn't enough.
+Concrete ambiguity criteria plus a worked "ask" example raised that to 6 of 18, and a precedence
+fix stopped a hedged response (a guessed step with real questions still attached) from being
+silently discarded. *Learned:* the rate is highly wording-sensitive -- the project's own golden
+task for this asked 0 of 6 in the same measurement, so a real, measured improvement can still fail
+to move the one case that was supposed to prove it.
+
+## The Coder's own tests, root-caused
+A 95-attempt survey of real failed runs (not a handful of anecdotes) found the largest single
+cause (35%) of the Coder's own tests failing every retry: a forgotten `import`, almost always
+mechanical. Fixed with `pyflakes` as a second static pre-check, the same pattern as the syntax
+check, verified against the real historical failures before being trusted. *Learned:* systematic
+evidence, not the first plausible anecdote, found the real distribution of causes -- a second,
+much harder sub-cause (self-imposed edge cases) was sitting right behind the first one.
+
+## Two real Planner bugs, and one instruction that didn't work
+Checking the actual plan steps behind two "correct code but escalated anyway" runs corrected an
+earlier assumption: the Coder wasn't inventing tests, the Planner's own `edge_cases` list was
+demanding them. Found and fixed two real bugs -- a hedged edge case that produced self-contradictory
+tests, and a redundant test-only step that slipped past the existing step-quality rule. A third
+candidate, telling the model not to invent edge cases beyond the goal's wording, was measured and
+had no effect at all, and was dropped rather than shipped unproven. *Learned:* the same measure-
+first discipline that ships a fix should also kill one that doesn't work, even after real effort
+went into it.
+
+## Fixing the tests exposed the honesty gap, not fixed it
+Golden run measuring the edge-case fixes: 11 of 16, tied for the best score seen, and the fix
+worked exactly as measured -- zero hedged edge cases, zero self-contradictory tests. But both
+repeats of the one ambiguous golden task came back a `false_success`, the most seen in any run.
+*Learned:* removing a real bug (inconsistent self-written tests) can remove an accidental safety
+net along with it -- a wrong guess that used to sometimes contradict itself into an honest
+escalation now passes its own bar cleanly instead. Both things are true at once: the fix was
+right, and the Planner still needing to actually ask its one required clarifying question is now
+more urgent than the raw score alone suggests.
