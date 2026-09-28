@@ -6,8 +6,8 @@ A portfolio-grade **multi-agent AI coding assistant**: a main orchestrator loop 
 three specialised sub-agents (Planner, Coder, Tool) to plan, implement, test, and ship code
 changes, using locally-hosted LLMs so it runs entirely on one laptop with no paid APIs.
 
-Full technical scope: [REQUIREMENTS.md](REQUIREMENTS.md). Plain-English explanation:
-[NON_TECHNICAL.md](NON_TECHNICAL.md). Phase-by-phase status: [TRACKER.md](TRACKER.md).
+Full technical scope: [REQUIREMENTS.md](doc/REQUIREMENTS.md). Plain-English explanation:
+[NON_TECHNICAL.md](doc/NON_TECHNICAL.md). Phase-by-phase status: [TRACKER.md](doc/TRACKER.md).
 
 **Two agent systems, don't confuse them:**
 - **Claude Code (you)** is building this project. The rules in this file govern *your* process.
@@ -37,7 +37,7 @@ Full technical scope: [REQUIREMENTS.md](REQUIREMENTS.md). Plain-English explanat
 ## 3. Hardware & local-model policy
 
 This laptop has an **8-core/16-thread CPU, 16GB RAM, and a 4GB-VRAM GTX 1650 Ti**. Every
-inference decision must respect that ceiling — see [REQUIREMENTS.md](REQUIREMENTS.md) §Hardware
+inference decision must respect that ceiling — see [REQUIREMENTS.md](doc/REQUIREMENTS.md) §Hardware
 for the measured specs and the reasoning behind the current allocation:
 
 - **Planner, Coder and Tool agents** → Ollama `qwen2.5:7b-instruct` (7.6B parameters, Q4_K_M,
@@ -45,7 +45,7 @@ for the measured specs and the reasoning behind the current allocation:
   (measured: about 7.9 tokens/s, about 45% on the GPU). All three agents share one model client
   so the model is not reloaded between them. `llama-server` (llama.cpp, `E:\LLMCPP`) remains
   available as an optional backend. The first local model (a 1.5B distilled model on
-  `llama-server`) failed the evaluation: see [failed_experiment.md](failed_experiment.md).
+  `llama-server`) failed the evaluation: see [failed_experiment.md](doc/failed_experiment.md).
 - A 7B model keeps the CPU busy, so long evaluation runs must not overlap with the user's other
   work; check utilisation before starting one.
 - Never let total CPU or GPU utilisation approach saturation (~85%+) — this is a laptop the
@@ -163,10 +163,13 @@ for the measured specs and the reasoning behind the current allocation:
 ```
 CLAUDE.md            # this file
 README.md            # architecture, brief description, tools/libs, metrics (grows per phase)
-REQUIREMENTS.md       # technical requirements & design decisions
-NON_TECHNICAL.md      # plain-English explanation of the project
-TRACKER.md            # phase-by-phase plan + status, original prompt on record
-failed_experiment.md  # what went wrong with the 1.5B local model, with plain-English explanations
+doc/                  # every other project doc, kept out of the root:
+  REQUIREMENTS.md       # technical requirements & design decisions
+  NON_TECHNICAL.md      # plain-English explanation of the project
+  TRACKER.md            # phase-by-phase plan + status, original prompt on record
+  CHANGELOG.md          # short narrative history, one entry per notable change
+  failed_experiment.md  # what went wrong with the 1.5B local model, with plain-English explanations
+  GOLDEN_SET.md         # the evaluation's ten tasks, what each checks, in plain English too
 config/               # single source of truth for settings (pydantic-settings)
 src/multiagent/       # orchestrator, agents, llm clients, memory, observability, guardrails
 tests/                # mirrors src/multiagent structure

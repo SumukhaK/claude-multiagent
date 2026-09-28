@@ -1,11 +1,11 @@
 # The Golden Set
 
-This is the exact test suite behind every number in [README.md](README.md#evaluation-what-we-learned)
+This is the exact test suite behind every number in [README.md](../README.md#evaluation-what-we-learned)
 and [failed_experiment.md](failed_experiment.md) — the ten tasks the system is graded against, and
 what each one is actually checking for. It exists because "we went from 0% to 69%" naturally invites
 the question: *69% of what, exactly?* This is the answer.
 
-The source of truth is [`golden_tasks.py`](src/multiagent/evaluation/golden_tasks.py); this file is
+The source of truth is [`golden_tasks.py`](../src/multiagent/evaluation/golden_tasks.py); this file is
 a human-readable guide to it, not a copy that can drift out of sync unnoticed.
 
 ## The ten tasks
@@ -30,7 +30,7 @@ A few things about how these are used, precisely:
   that it succeeded.
 - **Every implementation task's hidden test is provably solvable** — each one ships with a working
   reference solution, checked in
-  [`golden_tasks.py`](src/multiagent/evaluation/golden_tasks.py), that satisfies it. A failure is a
+  [`golden_tasks.py`](../src/multiagent/evaluation/golden_tasks.py), that satisfies it. A failure is a
   system failure, never an impossible task.
 - **The two bug-fix tasks start from real, broken code**, not a blank file — the system has to read
   and understand existing logic before changing it, the same as a real fix would require.
@@ -67,5 +67,5 @@ fixes made.
 These ten questions are exactly what took the system from failing completely (0 out of 16 attempts)
 to a best result of 69% — because every single fix made along the way was aimed at one specific,
 real failure one of these tasks exposed, not a guess at what might help. The full story of what went
-wrong and what fixed it is in [README.md](README.md) (short version) and
+wrong and what fixed it is in [README.md](../README.md) (short version) and
 [failed_experiment.md](failed_experiment.md) (the complete, detailed record).

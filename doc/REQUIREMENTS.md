@@ -1,7 +1,7 @@
 # Technical Requirements & Design
 
 Audience: engineers. For phase status see [TRACKER.md](TRACKER.md); for governance/process rules
-see [CLAUDE.md](CLAUDE.md); for a plain-English overview see [NON_TECHNICAL.md](NON_TECHNICAL.md).
+see [CLAUDE.md](../CLAUDE.md); for a plain-English overview see [NON_TECHNICAL.md](NON_TECHNICAL.md).
 
 ## 1. Functional requirements
 
