@@ -12,6 +12,38 @@ by a fixed golden task set with hidden acceptance tests
 - Build/process rules: [CLAUDE.md](CLAUDE.md)
 - What went wrong with the first (1.5B) local model: [failed_experiment.md](doc/failed_experiment.md)
 
+## Why three agents instead of one
+
+Two reasons: clear responsibilities, and least-privilege tool access.
+
+**1. Each agent has one job and one contract.** The Planner plans and reviews, the Coder implements
+one plan step test-first, and the Tool agent handles git. They exchange validated JSON (Pydantic
+contracts), never free text, so each role can be prompted, tested and debugged on its own. It also
+keeps prompts small: each role gets only the context it needs, which matters for a 7B model on a
+4 GB GPU.
+
+**2. Tools follow the role.**
+
+| Agent | Tools it has | What its tools cannot do |
+|---|---|---|
+| Planner | None: the orchestrator supplies its context | Read or write files, run code, use git |
+| Coder | Sandboxed writable filesystem, sandboxed pytest runner | Use git, push, or open a pull request |
+| Tool agent | Allowlisted git/gh wrappers, hardware test runner | Edit code |
+| Orchestrator | No tools and no LLM | — |
+
+So if text hidden in a file steers the Coder, its tools still cannot push code or open a pull
+request: only the Tool agent can, through allowlisted wrappers, when the orchestrator asks. Tool
+output is always treated as data, never as instructions.
+
+**What this does not protect against.** The isolation is at the tool level, not the process
+level: all three agents run in one process and share one model client. The biggest gap is that
+the Coder runs the tests it writes, and that code executes with the developer's full OS
+privileges, so it can read files, open network connections or call git itself. Real isolation
+would need a container or VM with no network; see
+[REQUIREMENTS.md §10.1](doc/REQUIREMENTS.md#101-threat-model-what-is-mitigated-and-what-is-not).
+A single agent whose tools change at each step could also limit access; separate agents were
+chosen for the focused prompts and independently testable contracts described above.
+
 ## Architecture
 
 ```mermaid
